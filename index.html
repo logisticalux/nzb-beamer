@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NZB Beamer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .card {
+            background: #1e1e1e;
+            border-radius: 14px;
+            padding: 14px 18px;
+            border: 1px solid #333;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .header-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            text-align: center;
+            background: linear-gradient(145deg, #1e1e1e, #252525);
+            padding: 14px 16px 10px;
+            overflow: hidden;
+        }
+
+        /* Logo ganz oben im Header, nimmt 3/4 der Kartenbreite ein. */
+        .beam-banner {
+            width: 75%;
+            max-width: 620px;
+            height: auto;
+            aspect-ratio: 350 / 70;
+            flex-shrink: 0;
+        }
+        .header-text { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+        @keyframes flow { 0% { stroke-dashoffset: 40; } 100% { stroke-dashoffset: 0; } }
+        @keyframes glowPulse { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.3; } }
+        @keyframes glowPulseActive { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+        .data-stream { stroke-dasharray: 6, 6; animation: flow 1s linear infinite; stroke: #ffffff; }
+        .glow-effect { animation: glowPulse 2s ease-in-out infinite; }
+
+        /* Während eines aktiven Downloads: Logo pulsiert schneller/heller
+           und der Datenstrahl bekommt einen leichten blauen Akzent, bleibt
+           aber überwiegend weiß. */
+        .header-card.downloading .data-stream { stroke: #bfe9ff; animation-duration: 0.5s; }
+        .header-card.downloading .glow-effect { animation: glowPulseActive 1s ease-in-out infinite; }
+        .header-card.downloading .nzb-packet-fill { fill: #0088cc; }
+
+        h1 {
+            margin: 0;
+            font-family: 'Poppins', 'Segoe UI', sans-serif;
+            font-weight: 700;
+            font-size: 17px;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+        .subtitle {
+            margin-top: 1px;
+            font-family: 'Poppins', 'Segoe UI', sans-serif;
+            font-weight: 600;
+            font-size: 10.5px;
+            color: #0088cc;
+        }
+
+        .status-card {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background-color: #1a231e;
+            border-color: #2e4d38;
+            padding: 8px 16px;
+            font-size: 13px;
+            overflow: hidden;
+        }
+
+        .status-side {
+            font-family: monospace;
+            font-size: 11px;
+            color: #8fbf9a;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .status-center {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .status-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center, rgba(76, 175, 80, 0.18), transparent 70%);
+            animation: bgPulse 3s ease-in-out infinite;
+        }
+
+        .status-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes bgPulse {
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 1; }
+        }
+
+        .status-dot {
+            width: 10px; height: 10px;
+            background-color: #4caf50;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #4caf50;
+            animation: statusPulse 2s infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes statusPulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+
+        .section-title {
+            margin: 0 0 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #888;
+        }
+
+        /* Einfarbige weiße Icons – gilt für dekorative Symbole (keine
+           Status-Anzeigen wie den Server-Punkt oder Erfolg/Fehler-Zeichen,
+           deren Farbe eine Bedeutung trägt). */
+        .icon-mono {
+            filter: brightness(0) invert(1);
+            display: inline-block;
+        }
+
+        .collapsible-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            margin: 0 0 8px;
+            user-select: none;
+        }
+        .collapsible-head .section-title { margin: 0; }
+        .chevron {
+            color: #666;
+            font-size: 11px;
+            transition: transform 0.2s ease;
+        }
+        .collapsible-body {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.25s ease;
+        }
+        .collapsible-body.collapsed {
+            max-height: 0;
+        }
+        .collapsible-head.collapsed .chevron {
+            transform: rotate(-90deg);
+        }
+
+        /* Server-Info Box */
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 5px 0;
+            font-size: 13px;
+        }
+        .info-row + .info-row { border-top: 1px solid #2c2c2c; }
+        .info-label { color: #888; flex-shrink: 0; }
+        .info-value {
+            font-family: monospace;
+            color: #e0e0e0;
+            text-align: right;
+            word-break: break-all;
+            overflow-wrap: anywhere;
+        }
+
+        /* Upload Formular */
+        label { display: block; margin-bottom: 5px; font-size: 13px; color: #aaa; }
+
+        input[type="file"] {
+            margin-bottom: 10px;
+            display: block;
+            width: 100%;
+            color: #bbb;
+            background: #2a2a2a;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px dashed #555;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: #0088cc;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:hover { background-color: #006699; }
+        button:active { transform: scale(0.98); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .file-picker-btn {
+            display: block;
+            background: #2a2a2a;
+            border: 1px dashed #555;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: 13.5px;
+            color: #bbb;
+            cursor: pointer;
+            box-sizing: border-box;
+            transition: background-color 0.2s;
+        }
+        .file-picker-btn:hover { background-color: #333; }
+        .file-picker-btn.has-files { color: #00ccff; border-style: solid; border-color: #0088cc; }
+
+        .btn-move {
+            margin-top: 10px;
+            background-color: #2a2a2a;
+            border: 1px solid #0088cc;
+            color: #00ccff;
+        }
+        .btn-move:hover { background-color: #17323f; }
+
+        #resultCard { display: none; background: #18251c; border-color: #2e4d38; }
+
+        .result-title {
+            color: #4caf50; font-weight: bold; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .result-details { font-size: 13px; line-height: 1.5; word-break: break-all; color: #ccc; }
+        .result-details span { color: #fff; font-weight: 500; }
+
+        .error-card { background: #2a1818 !important; border-color: #4d2e2e !important; }
+        .error-card .result-title { color: #f44336 !important; }
+
+        /* NZBGet-Fortschrittsbalken */
+        .nzb-progress-wrap { margin: 10px 0 2px; }
+        .nzb-progress-bar {
+            background: #2a2a2a;
+            border-radius: 6px;
+            height: 9px;
+            overflow: hidden;
+        }
+        .nzb-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0088cc, #00ccff);
+            transition: width 0.6s ease;
+        }
+        .nzb-progress-label {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #888;
+            text-align: right;
+        }
+
+        /* Kategorie-Verzeichnisse */
+        .cat-block { padding: 8px 0; }
+        .cat-block + .cat-block { border-top: 1px solid #2c2c2c; }
+
+        .cat-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+
+        .cat-icon { font-size: 14px; }
+        .cat-name { font-size: 13px; font-weight: 600; color: #ddd; flex-shrink: 0; }
+        .cat-check {
+            width: 15px; height: 15px;
+            border-radius: 50%;
+            background: #333;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 9px;
+            color: transparent;
+            flex-shrink: 0;
+        }
+        .cat-check.set { background: #2e4d38; color: #4caf50; }
+
+        .cat-path-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 5px;
+        }
+
+        .cat-path {
+            flex: 1;
+            font-family: monospace;
+            font-size: 11.5px;
+            color: #ccc;
+            word-break: break-all;
+        }
+        .cat-path.empty { color: #666; font-style: italic; }
+
+        .btn-secondary {
+            background-color: #2a2a2a;
+            border: 1px solid #444;
+            width: auto;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        .btn-secondary:hover { background-color: #333; }
+
+        .btn-danger {
+            background-color: #3a1e1e;
+            border: 1px solid #5a2e2e;
+            color: #f44336;
+        }
+        .btn-danger:hover { background-color: #4a2424; }
+
+        .file-mini-list {
+            max-height: 84px;
+            overflow-y: auto;
+            background: #161616;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+        }
+
+        .file-mini-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+        .file-mini-row + .file-mini-row { border-top: 1px solid #232323; }
+        .file-mini-name { font-family: monospace; color: #ccc; word-break: break-all; }
+        .file-mini-size { color: #777; flex-shrink: 0; white-space: nowrap; }
+
+        .file-mini-empty { padding: 8px; font-size: 11px; color: #666; text-align: center; }
+
+        /* Leere Ordner (Zielverzeichnisse) */
+        .empty-dirs-list {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .empty-dir-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #161616;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .empty-dir-row input[type="checkbox"] { flex-shrink: 0; width: 15px; height: 15px; accent-color: #0088cc; }
+        .empty-dir-path { font-family: monospace; color: #ccc; word-break: break-all; flex: 1; }
+        .empty-dir-cat { color: #777; flex-shrink: 0; font-size: 10.5px; white-space: nowrap; }
+
+        /* NZBGet-Warteschlange */
+        .queue-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .queue-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #161616;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .queue-name { font-family: monospace; color: #ccc; word-break: break-all; }
+        .queue-size { color: #888; flex-shrink: 0; white-space: nowrap; }
+
+        /* Ergebnisse Alle-Verschieben */
+        .move-results { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
+        .move-result-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            background: #161616;
+        }
+        .move-result-row.ok { border-left: 3px solid #4caf50; }
+        .move-result-row.partial { border-left: 3px solid #ff9800; }
+        .move-result-row.error { border-left: 3px solid #f44336; }
+        .move-result-row.skipped, .move-result-row.empty { border-left: 3px solid #555; color: #999; }
+        .move-result-cat { font-weight: 600; width: 55px; flex-shrink: 0; }
+
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row button { flex: 1; }
+
+        /* Protokoll */
+        .log-list {
+            max-height: 320px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .log-entry { padding: 8px 0; font-size: 12px; }
+        .log-entry + .log-entry { border-top: 1px solid #2c2c2c; }
+        .log-entry-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .log-entry-name { font-family: monospace; color: #e0e0e0; word-break: break-all; }
+        .log-entry-time { color: #777; flex-shrink: 0; white-space: nowrap; }
+        .log-entry-meta { margin-top: 3px; color: #888; }
+        .empty-note { color: #666; font-size: 12.5px; padding: 6px 0; }
+
+        /* Ordner-Browser Modal */
+        .modal-backdrop {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            display: none; align-items: center; justify-content: center;
+            z-index: 100; padding: 20px; box-sizing: border-box;
+        }
+        .modal-backdrop.open { display: flex; }
+
+        .modal {
+            background: #1e1e1e; border: 1px solid #333; border-radius: 16px;
+            width: 440px; max-width: 100%; max-height: 80vh;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-head { padding: 16px 20px; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
+        .modal-head h3 { margin: 0; font-size: 15px; color: #fff; }
+        .modal-close { background: none; border: none; color: #888; font-size: 18px; width: auto; padding: 0 4px; cursor: pointer; }
+        .modal-close:hover { color: #fff; background: none; }
+
+        .modal-toolbar { padding: 12px 20px; display: flex; gap: 10px; border-bottom: 1px solid #333; }
+        select, input[type="text"].cat-input {
+            font-family: inherit; font-size: 13px; background: #2a2a2a; color: #e0e0e0;
+            border: 1px solid #444; border-radius: 8px; padding: 7px 10px;
+        }
+
+        .add-category-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #2c2c2c;
+        }
+        .add-category-row input[type="text"].cat-input { flex: 1; min-width: 0; }
+        .add-category-row button { width: auto; flex-shrink: 0; }
+
+        .modal-path {
+            padding: 10px 20px; font-family: monospace; font-size: 12px; color: #00ccff;
+            background: #161616; word-break: break-all; border-bottom: 1px solid #333;
+        }
+
+        .modal-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+        .folder-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-size: 13.5px; }
+        .folder-item:hover { background: #262626; }
+
+        .modal-foot { padding: 14px 20px; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-foot button { width: auto; padding: 9px 16px; font-size: 13px; }
+        .modal-empty { padding: 20px; color: #666; font-size: 13px; text-align: center; }
+
+        .toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            padding: 12px 18px; border-radius: 10px; font-size: 13.5px;
+            background: #1e1e1e; border: 1px solid #333; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 200;
+            max-width: 90vw; text-align: center;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+        .toast.ok { border-color: #2e4d38; color: #4caf50; }
+        .toast.err { border-color: #4d2e2e; color: #f44336; }
+
+        /* Terminal-Box für Hardware-Daten */
+        .terminal-card {
+            background: #0c0c0c;
+            border-radius: 14px;
+            border: 1px solid #333;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .terminal-titlebar {
+            background: #1a1a1a;
+            padding: 7px 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-bottom: 1px solid #262626;
+            margin: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .terminal-titlebar .chevron { margin-left: auto; }
+
+        .terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+
+        .terminal-title {
+            margin-left: 6px;
+            color: #777;
+            font-size: 11px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+        }
+
+        .terminal-body {
+            padding: 10px 16px 12px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.65;
+            color: #c9c9c9;
+        }
+
+        .term-prompt { color: #4caf50; }
+        .term-path { color: #0088cc; }
+
+        .term-line {
+            display: flex;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .term-label { color: #888; width: 78px; flex-shrink: 0; }
+        .term-value { color: #e0e0e0; flex-shrink: 0; }
+        .term-extra { color: #666; overflow: hidden; text-overflow: ellipsis; }
+
+        .term-value.ok { color: #4caf50; }
+        .term-value.warn { color: #ffbd2e; }
+        .term-value.crit { color: #ff5f56; }
+
+        .term-section { margin-top: 8px; color: #888; }
+        .term-disk-row { display: flex; gap: 8px; padding-left: 10px; white-space: nowrap; }
+        .term-disk-label { width: 68px; flex-shrink: 0; color: #ccc; }
+
+        .term-empty { color: #666; }
+
+        .terminal-body.collapsed {
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        /* -------------------------------------------------------------
+           Responsive: Auf Tablet/PC wirkte die Oberfläche bisher sehr
+           klein und kompakt, weil alles auf Smartphone-Breite (480px)
+           ausgelegt war. Ab hier wächst die gesamte Oberfläche mit –
+           auf dem Smartphone bleibt alles unverändert.
+           ------------------------------------------------------------- */
+        @media (min-width: 700px) {
+            body { padding: 32px; }
+            .container { max-width: 700px; gap: 14px; }
+            .card { padding: 20px 26px; border-radius: 18px; }
+            .header-card { padding: 16px 24px; gap: 20px; }
+            h1 { font-size: 23px; }
+            .subtitle { font-size: 13px; }
+            .section-title { font-size: 14px; margin-bottom: 10px; }
+            .status-card { padding: 12px 22px; font-size: 15px; }
+            .status-side { font-size: 13px; }
+            .info-row { font-size: 14.5px; padding: 7px 0; }
+            label { font-size: 14.5px; }
+            input[type="file"] { padding: 11px; }
+            .file-picker-btn { font-size: 15px; padding: 13px; }
+            button { font-size: 16px; padding: 13px; }
+            .result-details { font-size: 14px; }
+            .cat-icon { font-size: 16px; }
+            .cat-name { font-size: 14.5px; }
+            .cat-path { font-size: 13px; }
+            .btn-secondary { font-size: 13px; padding: 8px 12px; }
+            .file-mini-row { font-size: 12.5px; }
+            .move-result-row { font-size: 13px; }
+            .queue-row { font-size: 13px; }
+            .log-entry { font-size: 13px; }
+            .terminal-body { font-size: 13.5px; }
+            .term-label { width: 90px; }
+            .term-disk-label { width: 78px; }
+            .modal { width: 560px; }
+        }
+
+        @media (min-width: 1100px) {
+            body { padding: 44px; }
+            .container { max-width: 900px; gap: 18px; }
+            .card { padding: 26px 32px; border-radius: 20px; }
+            .header-card { padding: 22px 30px; gap: 26px; }
+            h1 { font-size: 29px; }
+            .subtitle { font-size: 15px; }
+            .section-title { font-size: 15.5px; margin-bottom: 12px; }
+            .status-card { padding: 15px 26px; font-size: 16px; }
+            .status-side { font-size: 14px; }
+            .info-row { font-size: 16px; padding: 8px 0; }
+            label { font-size: 15.5px; }
+            input[type="file"] { padding: 12px; }
+            .file-picker-btn { font-size: 16px; padding: 14px; }
+            button { font-size: 17px; padding: 15px; }
+            .result-details { font-size: 15px; }
+            .cat-icon { font-size: 18px; }
+            .cat-name { font-size: 16px; }
+            .cat-path { font-size: 14px; }
+            .btn-secondary { font-size: 14px; padding: 9px 14px; }
+            .file-mini-row { font-size: 13.5px; }
+            .move-result-row { font-size: 14px; }
+            .queue-row { font-size: 14px; }
+            .log-entry { font-size: 14px; }
+            .terminal-body { font-size: 15px; }
+            .term-label { width: 100px; }
+            .term-disk-label { width: 86px; }
+            .modal { width: 620px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- Titel Box mit Beamer-Grafik -->
+    <div class="card header-card" id="headerCard">
+        <svg class="beam-banner" viewBox="0 0 350 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="6" opacity="0.15" class="glow-effect" />
+            <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="2.5" fill="none" class="data-stream" />
+
+            <g transform="translate(20, 18)" opacity="0.9">
+                <rect x="0" y="0" width="32" height="24" rx="4" fill="none" stroke="#ffffff" stroke-width="2"/>
+                <rect x="3" y="3" width="26" height="18" rx="2" fill="#ffffff" opacity="0.12"/>
+                <path d="M 9 9 L 22 16 M 22 9 L 9 16" stroke="#ffffff" stroke-width="1.3" opacity="0.6"/>
+                <path d="M 12 24 L 20 24 L 22 30 L 10 30 Z" fill="#ffffff" opacity="0.5"/>
+                <rect x="6" y="30" width="20" height="2" rx="1" fill="#ffffff" opacity="0.35"/>
+            </g>
+
+            <g transform="translate(298, 12)" opacity="0.9">
+                <rect x="0" y="0" width="28" height="38" rx="4" fill="none" stroke="#ffffff" stroke-width="2"/>
+                <line x1="5" y1="9" x2="23" y2="9" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
+                <line x1="5" y1="19" x2="23" y2="19" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
+                <line x1="5" y1="29" x2="23" y2="29" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
+                <circle cx="21" cy="9" r="1.3" fill="#ffffff"/>
+                <circle cx="21" cy="19" r="1.3" fill="#ffffff"/>
+                <circle cx="21" cy="29" r="1.3" fill="#ffffff"/>
+            </g>
+
+            <g transform="translate(158, 14)">
+                <rect x="0" y="0" width="18" height="13" rx="3" fill="#ffffff" class="nzb-packet-fill" />
+                <text x="9" y="9.5" fill="#121212" font-size="6" font-weight="bold" text-anchor="middle" font-family="sans-serif">NZB</text>
+            </g>
+        </svg>
+
+        <div class="header-text">
+            <h1>NZB Beamer</h1>
+            <div class="subtitle">by Logistica Lux 2026</div>
+        </div>
+    </div>
+
+    <!-- Server-Status -->
+    <div class="card status-card">
+        <span class="status-side" id="statusIp">–</span>
+        <div class="status-center">
+            <div class="status-dot"></div>
+            <span>Server bereit</span>
+        </div>
+        <span class="status-side" id="statusPort">–</span>
+    </div>
+
+    <!-- Letzter Zugriff -->
+    <div class="card">
+        <div class="section-title">Letzter Zugriff</div>
+        <div class="info-row"><span class="info-label">Zugriff von</span><span class="info-value" id="infoClientIp">–</span></div>
+        <div class="info-row"><span class="info-label">Letzter Zugriff</span><span class="info-value" id="infoLastAccess">–</span></div>
+    </div>
+
+    <!-- Hardware-Überwachung (Terminal-Look) -->
+    <div class="terminal-card">
+        <div class="terminal-titlebar collapsible-head collapsed" id="hwToggle">
+            <span class="terminal-dot dot-red"></span>
+            <span class="terminal-dot dot-yellow"></span>
+            <span class="terminal-dot dot-green"></span>
+            <span class="terminal-title">loglux@nzb-beamer: ~</span>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="terminal-body collapsible-body collapsed" id="hwBody">
+            <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
+            <div class="term-empty">lädt…</div>
+        </div>
+    </div>
+
+    <!-- Direkt-Upload -->
+    <div class="card">
+        <div class="section-title">Direkt-Upload</div>
+        <form id="uploadForm">
+            <label for="nzbFile">NZB-Datei(en) von diesem Rechner senden:</label>
+            <input type="file" id="nzbFile" accept=".nzb" multiple required style="display:none;">
+            <label for="nzbFile" class="file-picker-btn" id="filePickerLabel"><span class="icon-mono">📁</span> Datei(en) auswählen</label>
+            <button type="submit">Jetzt Beamen</button>
+        </form>
+    </div>
+
+    <div class="card" id="resultCard">
+        <div class="result-title" id="resultTitle">✔ Übertragung erfolgreich</div>
+        <div class="result-details" id="resultBody"></div>
+    </div>
+
+    <!-- Letzte NZB: bleibt bis zur nächsten gesendeten NZB stehen -->
+    <div class="card" id="nzbInfoCard" style="display:none;">
+        <div class="section-title">Letzte NZB</div>
+        <div class="info-row"><span class="info-label">Datei</span><span class="info-value" id="nzbName">–</span></div>
+        <div class="info-row"><span class="info-label">Größe</span><span class="info-value" id="nzbSize">–</span></div>
+        <div class="info-row"><span class="info-label">Erhalten</span><span class="info-value" id="nzbReceivedAt">–</span></div>
+        <div class="nzb-progress-wrap" id="nzbgetProgressWrap" style="display:none;">
+            <div class="nzb-progress-bar"><div class="nzb-progress-fill" id="nzbgetProgressFill"></div></div>
+            <div class="nzb-progress-label" id="nzbgetProgressLabel">0%</div>
+        </div>
+        <div class="info-row"><span class="info-label">NZBGet</span><span class="info-value" id="nzbgetStatusText">–</span></div>
+    </div>
+
+    <!-- NZBGet-Warteschlange: alle wartenden/laufenden Downloads -->
+    <div class="card" id="nzbgetQueueCard" style="display:none;">
+        <div class="section-title">NZBGet-Warteschlange</div>
+        <div class="queue-list" id="nzbgetQueueList"></div>
+    </div>
+
+    <!-- Quellverzeichnisse -->
+    <div class="card">
+        <div class="collapsible-head collapsed" id="sourceToggle">
+            <div class="section-title">Quellverzeichnisse</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="sourceBody">
+            <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
+                 abgelegt werden -->
+            <div class="cat-block">
+                <div class="cat-head">
+                    <span class="cat-icon icon-mono">📥</span>
+                    <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+                </div>
+                <div class="cat-path-row">
+                    <div class="cat-path" id="uploadDirPath">wird geladen…</div>
+                    <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
+                    <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+                </div>
+            </div>
+
+            <div id="sourceBlocks"></div>
+            <div class="add-category-row">
+                <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
+                <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zielverzeichnisse -->
+    <div class="card">
+        <div class="collapsible-head collapsed" id="targetToggle">
+            <div class="section-title">Zielverzeichnisse</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="targetBody">
+            <div id="targetBlocks"></div>
+        </div>
+    </div>
+
+    <!-- Leere Ordner in den Zielverzeichnissen finden & löschen -->
+    <div class="card">
+        <div class="collapsible-head collapsed" id="emptyDirsToggle">
+            <div class="section-title">Leere Ordner</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="emptyDirsBody">
+            <div class="btn-row">
+                <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
+                <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
+            </div>
+            <div class="empty-dirs-list" id="emptyDirsList">
+                <div class="empty-note">Noch nicht geprüft.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automatisches Verschieben: Status des letzten Laufs -->
+    <div class="card">
+        <div class="section-title">Letztes automatisches Verschieben</div>
+        <div class="info-row"><span class="info-label">Zeitpunkt</span><span class="info-value" id="lastMoveAt">noch nie</span></div>
+        <div class="move-results" id="moveResults"></div>
+        <button class="btn-move" id="moveNowBtn"><span class="icon-mono">🚀</span> Jetzt verschieben</button>
+    </div>
+
+    <!-- Protokoll: alle übertragenen NZBs, standardmäßig geschlossen -->
+    <div class="card">
+        <div class="collapsible-head collapsed" id="logToggle">
+            <div class="section-title">Protokoll</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="logBody">
+            <div class="log-list" id="logList">
+                <div class="empty-note">Noch nicht geladen.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server verwalten -->
+    <div class="card">
+        <div class="section-title">Server verwalten</div>
+        <div class="btn-row">
+            <button class="btn-secondary" id="restartBtn">Neustart</button>
+            <button class="btn-secondary btn-danger" id="shutdownBtn">Beenden</button>
+        </div>
+    </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Ordner-Browser Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+        <div class="modal-head">
+            <h3 id="modalTitle">Ordner auswählen</h3>
+            <button class="modal-close" id="modalCloseBtn">✕</button>
+        </div>
+        <div class="modal-toolbar">
+            <select id="driveSelect"></select>
+            <button class="btn-secondary" id="upBtn" style="flex:1;"><span class="icon-mono">⬆</span> Eine Ebene hoch</button>
+        </div>
+        <div class="modal-path" id="modalPath">–</div>
+        <div class="modal-list" id="modalList"></div>
+        <div class="modal-foot">
+            <button class="btn-secondary" id="modalCancelBtn">Abbrechen</button>
+            <button id="modalSelectBtn">Diesen Ordner auswählen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Wird beim Start (und nach dem Anlegen einer neuen Kategorie) vom
+    // Server geladen – enthält immer mindestens Filme/Serien/Musik, plus
+    // alle benutzerdefinierten Kategorien.
+    let CATEGORIES = [];
+
+    // -----------------------------------------------------------------
+    // Direkt-Upload (Mehrfachauswahl möglich)
+    // -----------------------------------------------------------------
+    (function () {
+        const fileInput = document.getElementById('nzbFile');
+        const filePickerLabel = document.getElementById('filePickerLabel');
+
+        function escapeHtmlLocal(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        fileInput.addEventListener('change', () => {
+            const n = fileInput.files.length;
+            if (n === 0) {
+                filePickerLabel.innerHTML = '<span class="icon-mono">📁</span> Datei(en) auswählen';
+                filePickerLabel.classList.remove('has-files');
+            } else if (n === 1) {
+                filePickerLabel.innerHTML = '<span class="icon-mono">📄</span> ' + escapeHtmlLocal(fileInput.files[0].name);
+                filePickerLabel.classList.add('has-files');
+            } else {
+                filePickerLabel.innerHTML = `<span class="icon-mono">📄</span> ${n} Dateien ausgewählt`;
+                filePickerLabel.classList.add('has-files');
+            }
+        });
+
+        async function uploadOne(file) {
+            const formData = new FormData();
+            formData.append('nzbFile', file);
+            const response = await fetch('/upload', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Fehler beim Upload');
+            }
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const resultCard = document.getElementById('resultCard');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultBody = document.getElementById('resultBody');
+
+            const files = Array.from(fileInput.files);
+            if (files.length === 0) return;
+
+            if (window._resultHideTimer) clearTimeout(window._resultHideTimer);
+            resultCard.style.display = 'block';
+            resultCard.classList.remove('error-card');
+            resultTitle.innerText = `⏳ Wird übertragen (0/${files.length})...`;
+            resultBody.innerHTML = '';
+
+            const okFiles = [];
+            const failedFiles = [];
+
+            for (let i = 0; i < files.length; i++) {
+                resultTitle.innerText = `⏳ Wird übertragen (${i + 1}/${files.length})...`;
+                try {
+                    await uploadOne(files[i]);
+                    okFiles.push(files[i].name);
+                } catch (err) {
+                    failedFiles.push(`${files[i].name}: ${err.message}`);
+                }
+            }
+
+            if (failedFiles.length === 0) {
+                resultCard.classList.remove('error-card');
+                resultTitle.innerText = okFiles.length > 1 ? '✔ Dateien erfolgreich gebeamt!' : '✔ Datei erfolgreich gebeamt!';
+                resultBody.innerHTML = okFiles.map((n) => `<div><strong>Datei:</strong> <span>${n}</span></div>`).join('');
+            } else if (okFiles.length === 0) {
+                resultCard.classList.add('error-card');
+                resultTitle.innerText = '✖ Fehler beim Upload';
+                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('');
+            } else {
+                resultCard.classList.add('error-card');
+                resultTitle.innerText = `⚠ ${okFiles.length} von ${files.length} übertragen`;
+                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('');
+            }
+
+            fileInput.value = '';
+            filePickerLabel.innerHTML = '<span class="icon-mono">📁</span> Datei(en) auswählen';
+            filePickerLabel.classList.remove('has-files');
+            loadNzbStatus();
+
+            // Statusmeldung nach 10 Sekunden wieder ausblenden
+            window._resultHideTimer = setTimeout(() => {
+                resultCard.style.display = 'none';
+            }, 10000);
+        });
+    })();
+
+    // -----------------------------------------------------------------
+    // Letzte NZB: Zusammenfassung + Download-Fortschritt
+    // -----------------------------------------------------------------
+    (function () {
+        const nzbCard = document.getElementById('nzbInfoCard');
+        const nzbName = document.getElementById('nzbName');
+        const nzbSize = document.getElementById('nzbSize');
+        const nzbReceivedAt = document.getElementById('nzbReceivedAt');
+        const nzbgetProgressWrap = document.getElementById('nzbgetProgressWrap');
+        const nzbgetProgressFill = document.getElementById('nzbgetProgressFill');
+        const nzbgetProgressLabel = document.getElementById('nzbgetProgressLabel');
+        const nzbgetStatusText = document.getElementById('nzbgetStatusText');
+        const headerCard = document.getElementById('headerCard');
+
+        function formatTimestamp(ms) {
+            if (!ms) return '–';
+            const d = new Date(ms);
+            return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const NZBGET_STATUS_LABELS = {
+            DOWNLOADING: 'Lädt herunter',
+            PAUSED: 'Pausiert',
+            QUEUED: 'In Warteschlange',
+            FETCHING: 'NZB wird eingelesen',
+        };
+
+        function renderNzbgetStatus(data) {
+            if (!data.nzbgetReachable) {
+                nzbgetProgressWrap.style.display = 'none';
+                nzbgetStatusText.textContent = 'NZBGet nicht erreichbar';
+                headerCard.classList.remove('downloading');
+                return;
+            }
+
+            const g = data.nzbget;
+
+            if (!g || g.phase === 'unknown') {
+                nzbgetProgressWrap.style.display = 'none';
+                nzbgetStatusText.textContent = 'Wartet, bis NZBGet die Datei einliest…';
+                headerCard.classList.remove('downloading');
+                return;
+            }
+
+            if (g.phase === 'done') {
+                nzbgetProgressWrap.style.display = 'block';
+                nzbgetProgressFill.style.width = '100%';
+                nzbgetProgressLabel.textContent = '100%';
+                nzbgetStatusText.textContent = `Abgeschlossen (${g.status || 'fertig'})`;
+                headerCard.classList.remove('downloading');
+                return;
+            }
+
+            // aktiv in der Warteschlange – Logo zeigt den aktiven Zustand an
+            nzbgetProgressWrap.style.display = 'block';
+            nzbgetProgressFill.style.width = g.percent + '%';
+            nzbgetProgressLabel.textContent = `${g.percent}% · ${g.downloadedMB} / ${g.totalMB} MB`;
+            nzbgetStatusText.textContent = NZBGET_STATUS_LABELS[g.status] || g.status || 'Aktiv';
+            headerCard.classList.toggle('downloading', g.status === 'DOWNLOADING');
+        }
+
+        // Zeigt immer die NZB, die gerade aktiv heruntergeladen wird –
+        // fällt auf die zuletzt gesendete zurück, wenn keine aktiv ist
+        // (wichtig, wenn mehrere Dateien auf einmal gesendet wurden).
+        window.loadNzbStatus = async function loadNzbStatus() {
+            try {
+                const res = await fetch('/api/nzb-status');
+                const data = await res.json().catch(() => ({}));
+
+                if (!data || !data.fileName) {
+                    nzbCard.style.display = 'none';
+                    headerCard.classList.remove('downloading');
+                    return;
+                }
+
+                nzbCard.style.display = 'block';
+                nzbName.textContent = data.fileName;
+                nzbSize.textContent = `${data.totalSizeGb} GB`;
+                nzbReceivedAt.textContent = formatTimestamp(data.receivedAt);
+                renderNzbgetStatus(data);
+            } catch (err) {
+                // still leave the card as-is on transient errors
+            }
+        };
+
+        setInterval(window.loadNzbStatus, 5000);
+        window.loadNzbStatus();
+    })();
+
+    // -----------------------------------------------------------------
+    // Kategorie-Verzeichnisse, Übersicht, Sammel-Verschieben, Server-Info
+    // -----------------------------------------------------------------
+    (function () {
+        const state = { config: null, modalSection: null, modalCategory: null, modalCurrentPath: null };
+
+        const el = {
+            sourceBlocks: document.getElementById('sourceBlocks'),
+            targetBlocks: document.getElementById('targetBlocks'),
+            sourceToggle: document.getElementById('sourceToggle'),
+            targetToggle: document.getElementById('targetToggle'),
+            sourceBody: document.getElementById('sourceBody'),
+            targetBody: document.getElementById('targetBody'),
+            lastMoveAt: document.getElementById('lastMoveAt'),
+            moveResults: document.getElementById('moveResults'),
+            restartBtn: document.getElementById('restartBtn'),
+            shutdownBtn: document.getElementById('shutdownBtn'),
+            statusIp: document.getElementById('statusIp'),
+            statusPort: document.getElementById('statusPort'),
+            infoClientIp: document.getElementById('infoClientIp'),
+            infoLastAccess: document.getElementById('infoLastAccess'),
+            hwToggle: document.getElementById('hwToggle'),
+            hwBody: document.getElementById('hwBody'),
+            toast: document.getElementById('toast'),
+            moveNowBtn: document.getElementById('moveNowBtn'),
+            nzbgetQueueCard: document.getElementById('nzbgetQueueCard'),
+            nzbgetQueueList: document.getElementById('nzbgetQueueList'),
+            newCategoryLabel: document.getElementById('newCategoryLabel'),
+            addCategoryBtn: document.getElementById('addCategoryBtn'),
+            uploadDirPath: document.getElementById('uploadDirPath'),
+            uploadDirChangeBtn: document.getElementById('uploadDirChangeBtn'),
+            uploadDirResetBtn: document.getElementById('uploadDirResetBtn'),
+            emptyDirsToggle: document.getElementById('emptyDirsToggle'),
+            emptyDirsBody: document.getElementById('emptyDirsBody'),
+            emptyDirsCheckBtn: document.getElementById('emptyDirsCheckBtn'),
+            emptyDirsDeleteBtn: document.getElementById('emptyDirsDeleteBtn'),
+            emptyDirsList: document.getElementById('emptyDirsList'),
+
+            modalBackdrop: document.getElementById('modalBackdrop'),
+            modalTitle: document.getElementById('modalTitle'),
+            driveSelect: document.getElementById('driveSelect'),
+            upBtn: document.getElementById('upBtn'),
+            modalPath: document.getElementById('modalPath'),
+            modalList: document.getElementById('modalList'),
+            modalCloseBtn: document.getElementById('modalCloseBtn'),
+            modalCancelBtn: document.getElementById('modalCancelBtn'),
+            modalSelectBtn: document.getElementById('modalSelectBtn'),
+        };
+
+        function showToast(message, ok) {
+            el.toast.textContent = message;
+            el.toast.className = 'toast show ' + (ok ? 'ok' : 'err');
+            setTimeout(() => { el.toast.className = 'toast'; }, 3500);
+        }
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function formatRelative(ms) {
+            if (!ms) return 'noch nie';
+            const diffSec = Math.round((Date.now() - ms) / 1000);
+            if (diffSec < 5) return 'gerade eben';
+            if (diffSec < 60) return `vor ${diffSec}s`;
+            const diffMin = Math.round(diffSec / 60);
+            if (diffMin < 60) return `vor ${diffMin} min`;
+            const diffH = Math.round(diffMin / 60);
+            if (diffH < 24) return `vor ${diffH} h`;
+            const d = new Date(ms);
+            return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function api(url, options) {
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type') || '';
+            const data = contentType.includes('application/json')
+                ? await res.json().catch(() => ({}))
+                : { error: await res.text().catch(() => '') };
+            if (!res.ok) throw new Error(data.error || ('Fehler bei ' + url));
+            return data;
+        }
+
+        // ---- Verzeichnis-Blöcke rendern ----
+        function renderBlocks(container, section) {
+            container.innerHTML = CATEGORIES.map((cat) => {
+                const dir = state.config[section === 'source' ? 'sources' : 'targets'][cat.key];
+                return `
+                    <div class="cat-block">
+                        <div class="cat-head">
+                            <span class="cat-icon icon-mono">${cat.icon}</span>
+                            <span class="cat-name">${cat.label}</span>
+                            <span class="cat-check ${dir ? 'set' : ''}">✓</span>
+                        </div>
+                        <div class="cat-path-row">
+                            <div class="cat-path ${dir ? '' : 'empty'}">${dir ? escapeHtml(dir) : 'nicht ausgewählt'}</div>
+                            <button class="btn-secondary choose-btn" data-section="${section}" data-category="${cat.key}">Ändern</button>
+                            <button class="btn-secondary btn-danger clear-btn" data-section="${section}" data-category="${cat.key}" ${dir ? '' : 'disabled'}>Löschen</button>
+                        </div>
+                        <div class="file-mini-list" id="files-${section}-${cat.key}">
+                            <div class="file-mini-empty">–</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.querySelectorAll('.choose-btn').forEach((btn) => {
+                btn.addEventListener('click', () => openModal(btn.dataset.section, btn.dataset.category));
+            });
+            container.querySelectorAll('.clear-btn').forEach((btn) => {
+                btn.addEventListener('click', () => clearDir(btn.dataset.section, btn.dataset.category));
+            });
+        }
+
+        async function clearDir(section, category) {
+            const cat = CATEGORIES.find((c) => c.key === category);
+            const label = `${section === 'source' ? 'Quelle' : 'Ziel'} (${cat.label})`;
+            if (!confirm(`Verzeichnisdefinition "${label}" wirklich löschen?`)) return;
+            try {
+                state.config = await api('/api/config/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ section, category }),
+                });
+                renderConfig();
+                loadOverview();
+                showToast('Verzeichnis entfernt.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        }
+
+        function renderConfig() {
+            renderBlocks(el.sourceBlocks, 'source');
+            renderBlocks(el.targetBlocks, 'target');
+        }
+
+        // ---- Kategorien laden (Basis-Kategorien + benutzerdefinierte) ----
+        async function loadCategories() {
+            try {
+                const data = await api('/api/categories');
+                CATEGORIES = (data.categories || []).map((c) => ({ key: c.key, icon: c.emoji || '📁', label: c.label }));
+            } catch (err) {
+                // ignore – CATEGORIES behält den zuletzt bekannten Stand
+            }
+        }
+
+        // ---- Konfiguration laden ----
+        async function loadConfig() {
+            try {
+                await loadCategories();
+                state.config = await api('/api/config');
+                renderConfig();
+                renderUploadDir();
+                loadOverview();
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        }
+
+        // ---- Beam-Ablageordner (wo Direkt-Upload-Dateien landen) ----
+        function renderUploadDir() {
+            el.uploadDirPath.textContent = state.config.uploadDir || 'Standard (vom Server vorgegeben)';
+            el.uploadDirPath.classList.toggle('empty', !state.config.uploadDir);
+            el.uploadDirResetBtn.disabled = !state.config.uploadDir;
+        }
+
+        el.uploadDirChangeBtn.addEventListener('click', () => openModal('upload', null));
+
+        el.uploadDirResetBtn.addEventListener('click', async () => {
+            if (!confirm('Beam-Ablageordner wirklich auf den Standard zurücksetzen?')) return;
+            try {
+                const data = await api('/api/upload-dir/clear', { method: 'POST' });
+                state.config.uploadDir = data.uploadDir;
+                renderUploadDir();
+                showToast('Auf Standard zurückgesetzt.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // ---- Neue Kategorie anlegen (Quelle + Ziel gleichzeitig) ----
+        el.addCategoryBtn.addEventListener('click', async () => {
+            const label = el.newCategoryLabel.value.trim();
+            if (!label) {
+                showToast('Bitte einen Namen eingeben.', false);
+                return;
+            }
+            el.addCategoryBtn.disabled = true;
+            try {
+                await api('/api/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label }),
+                });
+                el.newCategoryLabel.value = '';
+                await loadConfig();
+                showToast(`Kategorie "${label}" angelegt (Quelle + Ziel).`, true);
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.addCategoryBtn.disabled = false;
+            }
+        });
+        el.newCategoryLabel.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); el.addCategoryBtn.click(); }
+        });
+
+        // ---- Übersicht (Dateien je Verzeichnis) laden ----
+        async function loadOverview() {
+            try {
+                const data = await api('/api/overview');
+                ['source', 'target'].forEach((section) => {
+                    const key = section === 'source' ? 'sources' : 'targets';
+                    CATEGORIES.forEach((cat) => {
+                        const box = document.getElementById(`files-${section}-${cat.key}`);
+                        if (!box) return;
+                        const entry = data[key][cat.key];
+                        renderMiniFiles(box, entry);
+                    });
+                });
+            } catch (err) {
+                // still show config even if overview fails
+            }
+        }
+
+        function renderMiniFiles(box, entry) {
+            if (!entry.dir) {
+                box.innerHTML = '<div class="file-mini-empty">Kein Verzeichnis ausgewählt.</div>';
+                return;
+            }
+            if (entry.error) {
+                box.innerHTML = `<div class="file-mini-empty">Fehler: ${escapeHtml(entry.error)}</div>`;
+                return;
+            }
+            if (!entry.files.length) {
+                box.innerHTML = '<div class="file-mini-empty">Leer.</div>';
+                return;
+            }
+            box.innerHTML = entry.files.map((f) => `
+                <div class="file-mini-row">
+                    <span class="file-mini-name">${f.type === 'dir' ? '<span class="icon-mono">📁</span> ' : ''}${escapeHtml(f.name)}</span>
+                    <span class="file-mini-size">${f.type === 'dir' ? 'Ordner' : formatSize(f.size)}</span>
+                </div>
+            `).join('');
+        }
+
+        // ---- Letztes automatisches Verschieben (nur Anzeige, kein Trigger) ----
+        async function loadMoveStatus() {
+            try {
+                const data = await api('/api/move-status');
+                el.lastMoveAt.textContent = data.lastRunAt ? formatRelative(data.lastRunAt) : 'noch nie';
+                if (data.results && data.results.length) {
+                    renderMoveResults(data.results);
+                } else {
+                    el.moveResults.innerHTML = '';
+                }
+            } catch (err) {
+                // ignore
+            }
+        }
+
+        function renderMoveResults(results) {
+            const labelOf = (key) => (CATEGORIES.find((c) => c.key === key) || {}).label || key;
+            el.moveResults.innerHTML = results.map((r) => {
+                let text;
+                if (r.status === 'ok') text = `${r.moved} verschoben.`;
+                else if (r.status === 'empty') text = 'Keine Ordner/Dateien gefunden.';
+                else if (r.status === 'skipped') text = r.reason;
+                else if (r.status === 'partial') text = `${r.moved} verschoben, ${r.reason}`;
+                else text = r.reason;
+
+                return `
+                    <div class="move-result-row ${r.status}">
+                        <span class="move-result-cat">${labelOf(r.category)}</span>
+                        <span>${escapeHtml(text)}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ---- Server-Status (IP links, Port rechts) + Letzter Zugriff ----
+        async function loadStatus() {
+            try {
+                const data = await api('/api/status');
+                el.statusIp.textContent = data.ip;
+                el.statusPort.textContent = 'Port ' + data.port;
+                el.infoClientIp.textContent = data.clientIp || '–';
+                el.infoLastAccess.textContent = formatRelative(data.lastAccess);
+            } catch (err) {
+                // ignore
+            }
+        }
+
+        // ---- NZBGet-Warteschlange: alle Elemente (Name + Größe) ----
+        async function loadNzbgetQueue() {
+            try {
+                const data = await api('/api/nzbget-queue');
+                if (!data.reachable || !data.items || !data.items.length) {
+                    el.nzbgetQueueCard.style.display = 'none';
+                    return;
+                }
+                el.nzbgetQueueCard.style.display = 'block';
+                el.nzbgetQueueList.innerHTML = data.items.map((it) => `
+                    <div class="queue-row">
+                        <span class="queue-name">${escapeHtml(it.name)}</span>
+                        <span class="queue-size">${it.sizeMB} MB</span>
+                    </div>
+                `).join('');
+            } catch (err) {
+                el.nzbgetQueueCard.style.display = 'none';
+            }
+        }
+
+        // ---- Manuelles Verschieben ----
+        el.moveNowBtn.addEventListener('click', async () => {
+            el.moveNowBtn.disabled = true;
+            const originalText = el.moveNowBtn.textContent;
+            el.moveNowBtn.textContent = '⏳ Wird verschoben…';
+            try {
+                await api('/api/move-now', { method: 'POST' });
+                await loadMoveStatus();
+                loadOverview();
+                showToast('Verschieben abgeschlossen.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.moveNowBtn.disabled = false;
+                el.moveNowBtn.textContent = originalText;
+            }
+        });
+
+        // ---- Leere Ordner in den Zielverzeichnissen finden & löschen ----
+        function renderEmptyDirs(items) {
+            if (!items.length) {
+                el.emptyDirsList.innerHTML = '<div class="empty-note">Keine leeren Ordner gefunden.</div>';
+                el.emptyDirsDeleteBtn.disabled = true;
+                return;
+            }
+            const labelOf = (key) => (CATEGORIES.find((c) => c.key === key) || {}).label || key;
+            el.emptyDirsList.innerHTML = items.map((it, i) => `
+                <label class="empty-dir-row">
+                    <input type="checkbox" class="empty-dir-check" data-path="${escapeHtml(it.path)}">
+                    <span class="empty-dir-path">${escapeHtml(it.path)}</span>
+                    <span class="empty-dir-cat">${escapeHtml(labelOf(it.category))}</span>
+                </label>
+            `).join('');
+            el.emptyDirsDeleteBtn.disabled = true;
+            el.emptyDirsList.querySelectorAll('.empty-dir-check').forEach((cb) => {
+                cb.addEventListener('change', () => {
+                    const anyChecked = Array.from(el.emptyDirsList.querySelectorAll('.empty-dir-check')).some((c) => c.checked);
+                    el.emptyDirsDeleteBtn.disabled = !anyChecked;
+                });
+            });
+        }
+
+        el.emptyDirsCheckBtn.addEventListener('click', async () => {
+            el.emptyDirsCheckBtn.disabled = true;
+            const originalText = el.emptyDirsCheckBtn.textContent;
+            el.emptyDirsCheckBtn.textContent = '⏳ Prüft…';
+            el.emptyDirsList.innerHTML = '<div class="empty-note">Lädt…</div>';
+            try {
+                const data = await api('/api/empty-dirs');
+                renderEmptyDirs(data.items || []);
+            } catch (err) {
+                el.emptyDirsList.innerHTML = `<div class="empty-note">Fehler: ${escapeHtml(err.message)}</div>`;
+            } finally {
+                el.emptyDirsCheckBtn.disabled = false;
+                el.emptyDirsCheckBtn.textContent = originalText;
+            }
+        });
+
+        el.emptyDirsDeleteBtn.addEventListener('click', async () => {
+            const checked = Array.from(el.emptyDirsList.querySelectorAll('.empty-dir-check:checked'));
+            if (!checked.length) return;
+            const paths = checked.map((cb) => cb.dataset.path);
+            if (!confirm(`${paths.length} leere Ordner wirklich löschen?`)) return;
+
+            el.emptyDirsDeleteBtn.disabled = true;
+            el.emptyDirsDeleteBtn.textContent = 'Löscht…';
+            try {
+                const data = await api('/api/empty-dirs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paths }),
+                });
+                const failed = data.failed || [];
+                if (failed.length) {
+                    showToast(`${data.deleted.length} gelöscht, ${failed.length} fehlgeschlagen.`, false);
+                } else {
+                    showToast(`${data.deleted.length} leere Ordner gelöscht.`, true);
+                }
+                // Erneut prüfen, damit die Liste aktuell bleibt (z.B. wenn
+                // ein Elternordner dadurch nun selbst leer geworden ist).
+                el.emptyDirsCheckBtn.click();
+                loadOverview();
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.emptyDirsDeleteBtn.textContent = 'Ausgewählte löschen';
+            }
+        });
+
+        // ---- Hardware-Überwachung (Terminal-Box) ----
+        function levelClass(percent) {
+            if (percent >= 85) return 'crit';
+            if (percent >= 60) return 'warn';
+            return 'ok';
+        }
+
+        function formatUptime(sec) {
+            const d = Math.floor(sec / 86400);
+            const h = Math.floor((sec % 86400) / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const parts = [];
+            if (d) parts.push(d + 'd');
+            if (h || d) parts.push(h + 'h');
+            parts.push(m + 'min');
+            return parts.join(' ');
+        }
+
+        async function loadHardware() {
+            try {
+                const hw = await api('/api/hardware');
+                if (!hw || !hw.cpu) {
+                    el.hwBody.innerHTML = `
+                        <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
+                        <div class="term-empty">noch keine Daten erfasst…</div>
+                    `;
+                    return;
+                }
+
+                const cpuCls = levelClass(hw.cpu.loadPercent);
+                const memCls = levelClass(hw.memory.usedPercent);
+                const tempCls = hw.temperature.cpuC !== null ? levelClass(hw.temperature.cpuC >= 90 ? 100 : hw.temperature.cpuC >= 75 ? 65 : 0) : '';
+
+                const diskRows = hw.disks.map((d) => {
+                    const cls = levelClass(d.usedPercent);
+                    return `
+                        <div class="term-disk-row">
+                            <span class="term-disk-label">${escapeHtml(d.mount)}</span>
+                            <span class="term-value ${cls}">${d.usedPercent}%</span>
+                            <span class="term-extra">(${d.usedGb} GB / ${d.sizeGb} GB)</span>
+                        </div>
+                    `;
+                }).join('');
+
+                el.hwBody.innerHTML = `
+                    <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
+                    <div class="term-line"><span class="term-label">CPU</span><span class="term-value ${cpuCls}">${hw.cpu.loadPercent}%</span><span class="term-extra">${escapeHtml(hw.cpu.model)} · ${hw.cpu.cores} Kerne</span></div>
+                    <div class="term-line"><span class="term-label">RAM</span><span class="term-value ${memCls}">${hw.memory.usedPercent}%</span><span class="term-extra">(${hw.memory.usedGb} GB / ${hw.memory.totalGb} GB)</span></div>
+                    <div class="term-line"><span class="term-label">Netzwerk</span><span class="term-value">↓ ${hw.network.rxKBs} kB/s</span><span class="term-extra">↑ ${hw.network.txKBs} kB/s</span></div>
+                    <div class="term-line"><span class="term-label">Temperatur</span><span class="term-value ${tempCls}">${hw.temperature.cpuC !== null ? hw.temperature.cpuC + ' °C' : 'n/a'}</span></div>
+                    <div class="term-line"><span class="term-label">Uptime</span><span class="term-value">${formatUptime(hw.uptimeSeconds)}</span></div>
+                    <div class="term-section">Laufwerke:</div>
+                    ${diskRows || '<div class="term-empty" style="padding-left:10px;">keine gefunden</div>'}
+                `;
+            } catch (err) {
+                el.hwBody.innerHTML = `
+                    <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
+                    <div class="term-empty">Fehler: ${escapeHtml(err.message)}</div>
+                `;
+            }
+        }
+
+
+        async function openModal(section, category) {
+            state.modalSection = section;
+            state.modalCategory = category;
+
+            if (section === 'upload') {
+                el.modalTitle.textContent = 'Beam-Ablageordner auswählen';
+            } else {
+                const cat = CATEGORIES.find((c) => c.key === category);
+                el.modalTitle.textContent = `${section === 'source' ? 'Quelle' : 'Ziel'} für ${cat.label} auswählen`;
+            }
+
+            el.modalBackdrop.classList.add('open');
+
+            try {
+                const { drives } = await api('/api/drives');
+                el.driveSelect.innerHTML = drives.map((d) => `<option value="${d}">${d}</option>`).join('');
+
+                const currentDir = section === 'upload'
+                    ? state.config.uploadDir
+                    : state.config[section === 'source' ? 'sources' : 'targets'][category];
+                let startPath = currentDir;
+                if (!startPath && drives.length) startPath = drives[0];
+
+                if (startPath) {
+                    const driveOfPath = drives.find((d) => startPath.toUpperCase().startsWith(d.toUpperCase()));
+                    if (driveOfPath) el.driveSelect.value = driveOfPath;
+                }
+
+                await browseTo(startPath || drives[0]);
+            } catch (err) {
+                el.modalList.innerHTML = '<div class="modal-empty">' + escapeHtml(err.message) + '</div>';
+            }
+        }
+
+        function closeModal() {
+            el.modalBackdrop.classList.remove('open');
+            state.modalSection = null;
+            state.modalCategory = null;
+            state.modalCurrentPath = null;
+        }
+
+        async function browseTo(dirPath) {
+            try {
+                const data = await api('/api/browse?path=' + encodeURIComponent(dirPath));
+                state.modalCurrentPath = data.path;
+                el.modalPath.textContent = data.path;
+                el.upBtn.disabled = !data.parent;
+
+                if (!data.folders.length) {
+                    el.modalList.innerHTML = '<div class="modal-empty">Keine Unterordner vorhanden.</div>';
+                } else {
+                    el.modalList.innerHTML = data.folders.map((name) => `
+                        <div class="folder-item" data-name="${escapeHtml(name)}">
+                            <span class="icon-mono">📁</span><span>${escapeHtml(name)}</span>
+                        </div>
+                    `).join('');
+
+                    el.modalList.querySelectorAll('.folder-item').forEach((item) => {
+                        item.addEventListener('click', () => {
+                            const sep = data.path.endsWith('\\') ? '' : '\\';
+                            browseTo(data.path + sep + item.dataset.name);
+                        });
+                    });
+                }
+
+                el.upBtn.onclick = () => { if (data.parent) browseTo(data.parent); };
+            } catch (err) {
+                el.modalList.innerHTML = '<div class="modal-empty">' + escapeHtml(err.message) + '</div>';
+            }
+        }
+
+        el.driveSelect.addEventListener('change', () => browseTo(el.driveSelect.value));
+        el.modalCloseBtn.addEventListener('click', closeModal);
+        el.modalCancelBtn.addEventListener('click', closeModal);
+
+        el.modalSelectBtn.addEventListener('click', async () => {
+            if (!state.modalCurrentPath || !state.modalSection) return;
+            if (state.modalSection !== 'upload' && !state.modalCategory) return;
+            try {
+                if (state.modalSection === 'upload') {
+                    const data = await api('/api/upload-dir', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: state.modalCurrentPath }),
+                    });
+                    state.config.uploadDir = data.uploadDir;
+                    renderUploadDir();
+                    showToast('Beam-Ablageordner gespeichert.', true);
+                } else {
+                    state.config = await api('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ section: state.modalSection, category: state.modalCategory, path: state.modalCurrentPath }),
+                    });
+                    renderConfig();
+                    loadOverview();
+                    showToast('Verzeichnis gespeichert.', true);
+                }
+                closeModal();
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        // ---- Auf-/Zuklappen der Verzeichnis-Boxen ----
+        function setupCollapsible(headEl, bodyEl) {
+            function apply(collapsed) {
+                headEl.classList.toggle('collapsed', collapsed);
+                bodyEl.classList.toggle('collapsed', collapsed);
+            }
+            // Standard: immer geschlossen beim Laden der Seite (kein Merken
+            // über Reloads hinweg) – innerhalb der Sitzung aber aufklappbar.
+            apply(true);
+
+            headEl.addEventListener('click', () => {
+                apply(!bodyEl.classList.contains('collapsed'));
+            });
+        }
+
+        setupCollapsible(el.sourceToggle, el.sourceBody);
+        setupCollapsible(el.targetToggle, el.targetBody);
+        setupCollapsible(el.hwToggle, el.hwBody);
+        setupCollapsible(el.emptyDirsToggle, el.emptyDirsBody);
+
+        // ---- Server verwalten ----
+        el.restartBtn.addEventListener('click', async () => {
+            if (!confirm('Server wirklich neu starten?')) return;
+            try {
+                await api('/api/restart', { method: 'POST' });
+                showToast('Server wird neu gestartet…', true);
+                setTimeout(() => location.reload(), 4000);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        el.shutdownBtn.addEventListener('click', async () => {
+            if (!confirm('Server wirklich beenden? Er muss danach manuell wieder gestartet werden.')) return;
+            try {
+                await api('/api/shutdown', { method: 'POST' });
+                showToast('Server wurde beendet.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
+        setInterval(loadOverview, 8000);
+        setInterval(loadStatus, 10000);
+        setInterval(loadHardware, 5000);
+        setInterval(loadMoveStatus, 15000);
+        setInterval(loadNzbgetQueue, 6000);
+
+        loadConfig();
+        loadStatus();
+        loadHardware();
+        loadMoveStatus();
+        loadNzbgetQueue();
+    })();
+
+    // -----------------------------------------------------------------
+    // Protokoll: standardmäßig geschlossen, lädt erst beim Aufklappen
+    // -----------------------------------------------------------------
+    (function () {
+        const logToggle = document.getElementById('logToggle');
+        const logBody = document.getElementById('logBody');
+        const logList = document.getElementById('logList');
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function formatLogTime(iso) {
+            if (!iso) return '–';
+            const d = new Date(iso);
+            return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function renderLog(entries) {
+            if (!entries.length) {
+                logList.innerHTML = '<div class="empty-note">Noch keine Einträge.</div>';
+                return;
+            }
+            logList.innerHTML = entries.map((e) => `
+                <div class="log-entry">
+                    <div class="log-entry-head">
+                        <span class="log-entry-name">${escapeHtml(e.fileName || '–')}</span>
+                        <span class="log-entry-time">${formatLogTime(e.timestamp)}</span>
+                    </div>
+                    <div class="log-entry-meta">${escapeHtml(e.ip || '–')}${e.totalSizeGb != null ? ' · ' + e.totalSizeGb + ' GB' : ''}${e.fileCount != null ? ' · ' + e.fileCount + ' Dateien' : ''}${e.groups && e.groups.length ? ' · ' + escapeHtml(e.groups.join(', ')) : ''}</div>
+                </div>
+            `).join('');
+        }
+
+        async function loadLog() {
+            logList.innerHTML = '<div class="empty-note">Lädt…</div>';
+            try {
+                const res = await fetch('/api/log?limit=100');
+                const data = await res.json();
+                renderLog(data.entries || []);
+            } catch (err) {
+                logList.innerHTML = '<div class="empty-note">Fehler beim Laden.</div>';
+            }
+        }
+
+        logToggle.addEventListener('click', () => {
+            const nowCollapsed = !logBody.classList.contains('collapsed');
+            logToggle.classList.toggle('collapsed', nowCollapsed);
+            logBody.classList.toggle('collapsed', nowCollapsed);
+            if (!nowCollapsed) loadLog();
+        });
+    })();
+</script>
+
+</body>
+</html>
