@@ -2,7 +2,7 @@
 
 A self-hosted Node.js/Express web app for beaming `.nzb` files straight to a Windows machine running [NZBGet](https://nzbget.com/) — and for managing the media library that grows around it. Built as a small dark-themed single-page app with no external dependencies beyond a browser, plus optional deep integration with [Home Assistant](https://www.home-assistant.io/) via MQTT.
 
-https://github.com/logisticalux/nzb-beamer/blob/main/nzb-beamer.png?raw=true
+<img width="1494" height="3426" alt="nzb-beamer" src="https://github.com/user-attachments/assets/d5e2aab2-e313-4fa3-a252-9ec60d389961" />
 
 ## What it does
 
