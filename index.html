@@ -37,6 +37,7 @@
         }
 
         .header-card {
+            position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -46,6 +47,27 @@
             padding: 14px 16px 10px;
             overflow: hidden;
         }
+
+        /* Settings-Button: oben rechts im Header, öffnet das
+           File-Management-Modal (weg von der Hauptseite). */
+        .settings-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 2;
+            padding: 0;
+        }
+        .settings-btn:hover { background: rgba(255,255,255,0.16); }
 
         /* Logo ganz oben im Header, nimmt 3/4 der Kartenbreite ein. */
         .beam-banner {
@@ -526,6 +548,9 @@
             z-index: 100; padding: 20px; box-sizing: border-box;
         }
         .modal-backdrop.open { display: flex; }
+        /* Ordner-Browser-Modal kann auch aus dem Einstellungen-Modal heraus
+           geöffnet werden und muss dann darüber liegen. */
+        #modalBackdrop { z-index: 110; }
 
         .modal {
             background: #1e1e1e; border: 1px solid #333; border-radius: 16px;
@@ -620,7 +645,27 @@
             font-size: 12px;
             line-height: 1.65;
             color: #c9c9c9;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px 20px;
         }
+
+        /* Zwei Bereiche: links Serverdaten/Hardware, rechts Zugriffs-Log */
+        .terminal-col { flex: 1 1 220px; min-width: 200px; }
+        .terminal-col-right {
+            border-top: 1px solid #262626;
+            padding-top: 12px;
+        }
+        .term-access-heading {
+            color: #888;
+            margin-bottom: 6px;
+            white-space: normal;
+        }
+        .term-access-heading strong { color: #0088cc; font-weight: normal; }
+        .access-log-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+        .access-log-row { display: flex; gap: 8px; white-space: nowrap; }
+        .access-log-time { color: #888; flex-shrink: 0; }
+        .access-log-ip { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; }
 
         .term-prompt { color: #4caf50; }
         .term-path { color: #0088cc; }
@@ -683,6 +728,7 @@
             .terminal-body { font-size: 13.5px; }
             .term-label { width: 90px; }
             .term-disk-label { width: 78px; }
+            .terminal-col-right { border-top: none; border-left: 1px solid #262626; padding-top: 0; padding-left: 20px; }
             .modal { width: 560px; }
         }
 
@@ -723,6 +769,7 @@
 
     <!-- Titel Box mit Beamer-Grafik -->
     <div class="card header-card" id="headerCard">
+        <button type="button" class="settings-btn" id="settingsBtn" title="Einstellungen"><span class="icon-mono">⚙️</span></button>
         <svg class="beam-banner" viewBox="0 0 350 70" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="6" opacity="0.15" class="glow-effect" />
             <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="2.5" fill="none" class="data-stream" />
@@ -767,14 +814,8 @@
         <span class="status-side" id="statusPort">–</span>
     </div>
 
-    <!-- Letzter Zugriff -->
-    <div class="card">
-        <div class="section-title">Letzter Zugriff</div>
-        <div class="info-row"><span class="info-label">Zugriff von</span><span class="info-value" id="infoClientIp">–</span></div>
-        <div class="info-row"><span class="info-label">Letzter Zugriff</span><span class="info-value" id="infoLastAccess">–</span></div>
-    </div>
-
-    <!-- Hardware-Überwachung (Terminal-Look) -->
+    <!-- Hardware-Überwachung + Zugriffs-Log (Terminal-Look), horizontal
+         zweigeteilt: links Serverdaten, rechts protokollierte Zugriffe. -->
     <div class="terminal-card">
         <div class="terminal-titlebar collapsible-head collapsed" id="hwToggle">
             <span class="terminal-dot dot-red"></span>
@@ -784,8 +825,16 @@
             <span class="chevron">▼</span>
         </div>
         <div class="terminal-body collapsible-body collapsed" id="hwBody">
-            <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
-            <div class="term-empty">lädt…</div>
+            <div class="terminal-col" id="hwStatsCol">
+                <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
+                <div class="term-empty">lädt…</div>
+            </div>
+            <div class="terminal-col terminal-col-right">
+                <div class="term-access-heading" id="accessLogHeading">Server: <strong>–</strong> · Port <strong>–</strong> · –</div>
+                <div class="access-log-list" id="accessLogList">
+                    <div class="term-empty">keine Zugriffe protokolliert</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -825,56 +874,6 @@
         <div class="queue-list" id="nzbgetQueueList"></div>
     </div>
 
-    <!-- File Management: Quell-/Zielverzeichnisse + Leere Ordner, kombiniert -->
-    <div class="card">
-        <div class="collapsible-head collapsed" id="fileManagementToggle">
-            <div class="section-title">File Management</div>
-            <span class="chevron">▼</span>
-        </div>
-        <div class="collapsible-body collapsed" id="fileManagementBody">
-
-            <div class="filemgmt-subsection filemgmt-subsection--source">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📤</span> Quellverzeichnisse</div>
-                <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
-                     abgelegt werden -->
-                <div class="cat-block">
-                    <div class="cat-head">
-                        <span class="cat-icon icon-mono">📥</span>
-                        <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
-                    </div>
-                    <div class="cat-path-row">
-                        <div class="cat-path" id="uploadDirPath">wird geladen…</div>
-                        <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
-                        <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
-                    </div>
-                </div>
-
-                <div id="sourceBlocks"></div>
-                <div class="add-category-row">
-                    <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
-                    <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
-                </div>
-            </div>
-
-            <div class="filemgmt-subsection filemgmt-subsection--target">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zielverzeichnisse</div>
-                <div id="targetBlocks"></div>
-            </div>
-
-            <div class="filemgmt-subsection filemgmt-subsection--cleanup">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🧹</span> Leere Ordner</div>
-                <div class="btn-row">
-                    <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
-                    <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
-                </div>
-                <div class="empty-dirs-list" id="emptyDirsList">
-                    <div class="empty-note">Noch nicht geprüft.</div>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
     <!-- Netzwerk-Einstellungen: erlaubte IP-Bereiche -->
     <div class="card">
         <div class="collapsible-head collapsed" id="networkToggle">
@@ -896,12 +895,17 @@
         </div>
     </div>
 
-    <!-- Automatisches Verschieben: Status des letzten Laufs -->
+    <!-- Automatisches Verschieben: Status des letzten Laufs, standardmäßig geschlossen -->
     <div class="card">
-        <div class="section-title">Letztes automatisches Verschieben</div>
-        <div class="info-row"><span class="info-label">Zeitpunkt</span><span class="info-value" id="lastMoveAt">noch nie</span></div>
-        <div class="move-results" id="moveResults"></div>
-        <button class="btn-move" id="moveNowBtn"><span class="icon-mono">🚀</span> Jetzt verschieben</button>
+        <div class="collapsible-head collapsed" id="moveToggle">
+            <div class="section-title">Letztes automatisches Verschieben</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="moveBody">
+            <div class="info-row"><span class="info-label">Zeitpunkt</span><span class="info-value" id="lastMoveAt">noch nie</span></div>
+            <div class="move-results" id="moveResults"></div>
+            <button class="btn-move" id="moveNowBtn"><span class="icon-mono">🚀</span> Jetzt verschieben</button>
+        </div>
     </div>
 
     <!-- Protokoll: alle übertragenen NZBs, standardmäßig geschlossen -->
@@ -946,6 +950,62 @@
         <div class="modal-foot">
             <button class="btn-secondary" id="modalCancelBtn">Abbrechen</button>
             <button id="modalSelectBtn">Diesen Ordner auswählen</button>
+        </div>
+    </div>
+</div>
+
+<!-- Einstellungen: File Management, per Settings-Button im Header erreichbar
+     (nicht mehr fest auf der Hauptseite) -->
+<div class="modal-backdrop" id="settingsModalBackdrop">
+    <div class="modal" style="width: 480px; max-height: 85vh;">
+        <div class="modal-head">
+            <h3>Einstellungen</h3>
+            <button class="modal-close" id="settingsModalCloseBtn">✕</button>
+        </div>
+        <div style="padding: 16px 20px; overflow-y: auto;" id="fileManagementBody">
+
+            <div class="filemgmt-subsection filemgmt-subsection--source">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📤</span> Quellverzeichnisse</div>
+                <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
+                     abgelegt werden -->
+                <div class="cat-block">
+                    <div class="cat-head">
+                        <span class="cat-icon icon-mono">📥</span>
+                        <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+                    </div>
+                    <div class="cat-path-row">
+                        <div class="cat-path" id="uploadDirPath">wird geladen…</div>
+                        <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
+                        <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+                    </div>
+                </div>
+
+                <div id="sourceBlocks"></div>
+                <div class="add-category-row">
+                    <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
+                    <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
+                </div>
+            </div>
+
+            <div class="filemgmt-subsection filemgmt-subsection--target">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zielverzeichnisse</div>
+                <div id="targetBlocks"></div>
+            </div>
+
+            <div class="filemgmt-subsection filemgmt-subsection--cleanup">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🧹</span> Leere Ordner</div>
+                <div class="btn-row">
+                    <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
+                    <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
+                </div>
+                <div class="empty-dirs-list" id="emptyDirsList">
+                    <div class="empty-note">Noch nicht geprüft.</div>
+                </div>
+            </div>
+
+        </div>
+        <div class="modal-foot">
+            <button id="settingsModalDoneBtn">Fertig</button>
         </div>
     </div>
 </div>
@@ -1227,18 +1287,23 @@
         const el = {
             sourceBlocks: document.getElementById('sourceBlocks'),
             targetBlocks: document.getElementById('targetBlocks'),
-            fileManagementToggle: document.getElementById('fileManagementToggle'),
-            fileManagementBody: document.getElementById('fileManagementBody'),
+            settingsBtn: document.getElementById('settingsBtn'),
+            settingsModalBackdrop: document.getElementById('settingsModalBackdrop'),
+            settingsModalCloseBtn: document.getElementById('settingsModalCloseBtn'),
+            settingsModalDoneBtn: document.getElementById('settingsModalDoneBtn'),
+            moveToggle: document.getElementById('moveToggle'),
+            moveBody: document.getElementById('moveBody'),
             lastMoveAt: document.getElementById('lastMoveAt'),
             moveResults: document.getElementById('moveResults'),
             restartBtn: document.getElementById('restartBtn'),
             shutdownBtn: document.getElementById('shutdownBtn'),
             statusIp: document.getElementById('statusIp'),
             statusPort: document.getElementById('statusPort'),
-            infoClientIp: document.getElementById('infoClientIp'),
-            infoLastAccess: document.getElementById('infoLastAccess'),
+            accessLogHeading: document.getElementById('accessLogHeading'),
+            accessLogList: document.getElementById('accessLogList'),
             hwToggle: document.getElementById('hwToggle'),
             hwBody: document.getElementById('hwBody'),
+            hwStatsCol: document.getElementById('hwStatsCol'),
             toast: document.getElementById('toast'),
             moveNowBtn: document.getElementById('moveNowBtn'),
             nzbgetQueueCard: document.getElementById('nzbgetQueueCard'),
@@ -1270,10 +1335,11 @@
             modalSelectBtn: document.getElementById('modalSelectBtn'),
         };
 
-        function showToast(message, ok) {
+        function showToast(message, ok, durationMs) {
             el.toast.textContent = message;
             el.toast.className = 'toast show ' + (ok ? 'ok' : 'err');
-            setTimeout(() => { el.toast.className = 'toast'; }, 3500);
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => { el.toast.className = 'toast'; }, durationMs || 3500);
         }
 
         function escapeHtml(str) {
@@ -1557,6 +1623,7 @@
         }
 
         // ---- Letztes automatisches Verschieben (nur Anzeige, kein Trigger) ----
+        let lastSeenMoveRunAt = null;
         async function loadMoveStatus() {
             try {
                 const data = await api('/api/move-status');
@@ -1565,6 +1632,22 @@
                     renderMoveResults(data.results);
                 } else {
                     el.moveResults.innerHTML = '';
+                }
+
+                // Wenn eine neue Verschiebung passiert ist, während die Karte
+                // eingeklappt ist, kurz (~10s) eine Zusammenfassung als Toast
+                // einblenden, statt dass die Info unbemerkt verschwindet.
+                const isNewRun = data.lastRunAt && data.lastRunAt !== lastSeenMoveRunAt;
+                if (isNewRun) {
+                    const wasFirstLoad = lastSeenMoveRunAt === null;
+                    lastSeenMoveRunAt = data.lastRunAt;
+                    const movedCount = (data.results || [])
+                        .filter((r) => r.status === 'ok' || r.status === 'partial')
+                        .reduce((sum, r) => sum + (r.moved || 0), 0);
+                    const cardCollapsed = el.moveBody.classList.contains('collapsed');
+                    if (!wasFirstLoad && movedCount > 0 && cardCollapsed) {
+                        showToast(`Automatisch verschoben: ${movedCount} Datei(en). Details unter „Letztes automatisches Verschieben“.`, true, 10000);
+                    }
                 }
             } catch (err) {
                 // ignore
@@ -1590,17 +1673,35 @@
             }).join('');
         }
 
-        // ---- Server-Status (IP links, Port rechts) + Letzter Zugriff ----
+        // ---- Server-Status (IP links, Port rechts) + Zugriffs-Log ----
         async function loadStatus() {
             try {
                 const data = await api('/api/status');
                 el.statusIp.textContent = data.ip;
                 el.statusPort.textContent = 'Port ' + data.port;
-                el.infoClientIp.textContent = data.clientIp || '–';
-                el.infoLastAccess.textContent = formatRelative(data.lastAccess);
+
+                el.accessLogHeading.innerHTML = `Server: <strong>${escapeHtml(data.ip)}</strong> · Port <strong>${data.port}</strong>`;
+
+                const entries = data.accessLog || [];
+                if (!entries.length) {
+                    el.accessLogList.innerHTML = '<div class="term-empty">keine Zugriffe protokolliert</div>';
+                } else {
+                    el.accessLogList.innerHTML = entries.map((e) => `
+                        <div class="access-log-row">
+                            <span class="access-log-time">${formatTimestampShort(e.time)}</span>
+                            <span class="access-log-ip">${escapeHtml(e.ip)}</span>
+                        </div>
+                    `).join('');
+                }
             } catch (err) {
                 // ignore
             }
+        }
+
+        function formatTimestampShort(ms) {
+            if (!ms) return '–';
+            const d = new Date(ms);
+            return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
 
         // ---- NZBGet-Status: immer sichtbar – aktiver Download (mit
@@ -1759,7 +1860,7 @@
             try {
                 const hw = await api('/api/hardware');
                 if (!hw || !hw.cpu) {
-                    el.hwBody.innerHTML = `
+                    el.hwStatsCol.innerHTML = `
                         <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
                         <div class="term-empty">noch keine Daten erfasst…</div>
                     `;
@@ -1781,7 +1882,7 @@
                     `;
                 }).join('');
 
-                el.hwBody.innerHTML = `
+                el.hwStatsCol.innerHTML = `
                     <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
                     <div class="term-line"><span class="term-label">CPU</span><span class="term-value ${cpuCls}">${hw.cpu.loadPercent}%</span><span class="term-extra">${escapeHtml(hw.cpu.model)} · ${hw.cpu.cores} Kerne</span></div>
                     <div class="term-line"><span class="term-label">RAM</span><span class="term-value ${memCls}">${hw.memory.usedPercent}%</span><span class="term-extra">(${hw.memory.usedGb} GB / ${hw.memory.totalGb} GB)</span></div>
@@ -1792,7 +1893,7 @@
                     ${diskRows || '<div class="term-empty" style="padding-left:10px;">keine gefunden</div>'}
                 `;
             } catch (err) {
-                el.hwBody.innerHTML = `
+                el.hwStatsCol.innerHTML = `
                     <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
                     <div class="term-empty">Fehler: ${escapeHtml(err.message)}</div>
                 `;
@@ -1919,9 +2020,18 @@
             });
         }
 
-        setupCollapsible(el.fileManagementToggle, el.fileManagementBody);
+        // ---- Settings-Modal (File Management) ----
+        function openSettingsModal() { el.settingsModalBackdrop.classList.add('open'); }
+        function closeSettingsModal() { el.settingsModalBackdrop.classList.remove('open'); }
+        el.settingsBtn.addEventListener('click', openSettingsModal);
+        el.settingsModalCloseBtn.addEventListener('click', closeSettingsModal);
+        el.settingsModalDoneBtn.addEventListener('click', closeSettingsModal);
+        el.settingsModalBackdrop.addEventListener('click', (e) => {
+            if (e.target === el.settingsModalBackdrop) closeSettingsModal();
+        });
         setupCollapsible(el.hwToggle, el.hwBody);
         setupCollapsible(el.networkToggle, el.networkBody);
+        setupCollapsible(el.moveToggle, el.moveBody);
 
         // ---- Server verwalten ----
         el.restartBtn.addEventListener('click', async () => {

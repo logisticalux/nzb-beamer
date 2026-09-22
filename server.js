@@ -103,6 +103,24 @@ const NZBGET_POLL_INTERVAL_MS = 8000;
 
 let mqttClient = null;
 let lastClientIp = null;
+// Protokoll der letzten echten Zugriffe (Zeit + IP), neueste zuerst. Mehrere
+// Anfragen desselben Clients innerhalb von ACCESS_LOG_COALESCE_MS gelten als
+// ein Besuch (nur der Zeitstempel wird aktualisiert), damit ein einzelner
+// Seitenaufruf nicht gleich mehrere Log-Zeilen erzeugt.
+let accessLog = [];
+const ACCESS_LOG_MAX = 20;
+const ACCESS_LOG_COALESCE_MS = 30000;
+
+function recordAccess(ip) {
+    const now = Date.now();
+    const last = accessLog[0];
+    if (last && last.ip === ip && (now - last.time) < ACCESS_LOG_COALESCE_MS) {
+        last.time = now;
+        return;
+    }
+    accessLog.unshift({ time: now, ip });
+    if (accessLog.length > ACCESS_LOG_MAX) accessLog.length = ACCESS_LOG_MAX;
+}
 let hardwareSnapshot = null;
 const publishedDiskIds = new Set();
 // Alle in der aktuellen Sitzung gebeamten NZBs (nicht nur die letzte) –
@@ -383,12 +401,13 @@ app.use(ipFilter);
 // als echter Zugriff, sonst wäre der Zeitstempel bei offener Seite immer
 // "jetzt").
 app.use((req, res, next) => {
-    const isPolling = req.method === 'GET' && ['/api/status', '/api/overview', '/api/hardware', '/api/nzb-status', '/api/move-status'].includes(req.path);
+    const isPolling = req.method === 'GET' && ['/api/status', '/api/overview', '/api/hardware', '/api/nzb-status', '/api/move-status', '/api/nzbget-queue'].includes(req.path);
     if (!isPolling) {
         lastAccess = Date.now();
         let ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
         if (ip.startsWith('::ffff:')) ip = ip.slice(7);
         lastClientIp = ip;
+        recordAccess(ip);
         publishAccessInfo();
     }
     next();
@@ -1354,6 +1373,7 @@ app.get('/api/status', (req, res) => {
         clientIp,
         port: PORT,
         lastAccess,
+        accessLog,
     });
 });
 
