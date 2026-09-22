@@ -1,6 +1,6 @@
 {
   "name": "nzb-beamer",
-  "version": "1.8.0",
+  "version": "1.12.0",
   "description": "NZB Beamer – Direkt-Upload mit NZB-Auswertung & Downloadfortschritt, kategoriebasierter Verzeichnis-Transfer, MQTT/Home-Assistant-Integration und Hardware-Überwachung.",
   "main": "server.js",
   "scripts": {

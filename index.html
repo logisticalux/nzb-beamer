@@ -188,6 +188,52 @@
             transform: rotate(-90deg);
         }
 
+        /* File Management: jeder Unterabschnitt ist eine eigene, optisch
+           abgegrenzte Box (eigener Hintergrund + Rahmen + Farbakzent),
+           damit Quelle/Ziel/Cleanup klar auseinanderzuhalten sind. */
+        .filemgmt-subsection {
+            background: #1c1c1c;
+            border: 1px solid #2c2c2c;
+            border-left-width: 3px;
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+        .filemgmt-subsection + .filemgmt-subsection {
+            margin-top: 14px;
+        }
+        .filemgmt-subsection--source { border-left-color: #4a90d9; }
+        .filemgmt-subsection--target { border-left-color: #4ac97a; }
+        .filemgmt-subsection--cleanup { border-left-color: #d9a94a; }
+        .filemgmt-subtitle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #aaa;
+            margin: 0 0 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .filemgmt-subtitle-icon {
+            width: 14px;
+            height: 14px;
+            font-size: 13px;
+            opacity: 0.85;
+        }
+
+        /* Network Settings: Liste erlaubter IP-Bereiche */
+        .network-range-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 0;
+            font-size: 13px;
+        }
+        .network-range-row + .network-range-row { border-top: 1px solid #2c2c2c; }
+        .network-range-row .network-range-value { font-family: monospace; color: #ddd; }
+
         /* Server-Info Box */
         .info-row {
             display: flex;
@@ -416,6 +462,23 @@
         }
         .queue-name { font-family: monospace; color: #ccc; word-break: break-all; }
         .queue-size { color: #888; flex-shrink: 0; white-space: nowrap; }
+
+        /* Aktiver Download im immer sichtbaren NZBGet-Status */
+        .queue-active {
+            background: #161c22;
+            border: 1px solid #24333d;
+            border-left: 3px solid #00ccff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+        }
+        .queue-active-name {
+            font-family: monospace;
+            font-size: 12.5px;
+            color: #fff;
+            word-break: break-all;
+            margin-bottom: 6px;
+        }
 
         /* Ergebnisse Alle-Verschieben */
         .move-results { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
@@ -755,65 +818,80 @@
         <div class="info-row"><span class="info-label">NZBGet</span><span class="info-value" id="nzbgetStatusText">–</span></div>
     </div>
 
-    <!-- NZBGet-Warteschlange: alle wartenden/laufenden Downloads -->
-    <div class="card" id="nzbgetQueueCard" style="display:none;">
-        <div class="section-title">NZBGet-Warteschlange</div>
+    <!-- NZBGet-Status: immer sichtbar, zeigt was gerade aktiv ist -->
+    <div class="card" id="nzbgetQueueCard">
+        <div class="section-title">NZBGet-Status</div>
+        <div id="nzbgetActiveBox"></div>
         <div class="queue-list" id="nzbgetQueueList"></div>
     </div>
 
-    <!-- Quellverzeichnisse -->
+    <!-- File Management: Quell-/Zielverzeichnisse + Leere Ordner, kombiniert -->
     <div class="card">
-        <div class="collapsible-head collapsed" id="sourceToggle">
-            <div class="section-title">Quellverzeichnisse</div>
+        <div class="collapsible-head collapsed" id="fileManagementToggle">
+            <div class="section-title">File Management</div>
             <span class="chevron">▼</span>
         </div>
-        <div class="collapsible-body collapsed" id="sourceBody">
-            <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
-                 abgelegt werden -->
-            <div class="cat-block">
-                <div class="cat-head">
-                    <span class="cat-icon icon-mono">📥</span>
-                    <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+        <div class="collapsible-body collapsed" id="fileManagementBody">
+
+            <div class="filemgmt-subsection filemgmt-subsection--source">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📤</span> Quellverzeichnisse</div>
+                <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
+                     abgelegt werden -->
+                <div class="cat-block">
+                    <div class="cat-head">
+                        <span class="cat-icon icon-mono">📥</span>
+                        <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+                    </div>
+                    <div class="cat-path-row">
+                        <div class="cat-path" id="uploadDirPath">wird geladen…</div>
+                        <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
+                        <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+                    </div>
                 </div>
-                <div class="cat-path-row">
-                    <div class="cat-path" id="uploadDirPath">wird geladen…</div>
-                    <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
-                    <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+
+                <div id="sourceBlocks"></div>
+                <div class="add-category-row">
+                    <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
+                    <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
                 </div>
             </div>
 
-            <div id="sourceBlocks"></div>
+            <div class="filemgmt-subsection filemgmt-subsection--target">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zielverzeichnisse</div>
+                <div id="targetBlocks"></div>
+            </div>
+
+            <div class="filemgmt-subsection filemgmt-subsection--cleanup">
+                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🧹</span> Leere Ordner</div>
+                <div class="btn-row">
+                    <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
+                    <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
+                </div>
+                <div class="empty-dirs-list" id="emptyDirsList">
+                    <div class="empty-note">Noch nicht geprüft.</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Netzwerk-Einstellungen: erlaubte IP-Bereiche -->
+    <div class="card">
+        <div class="collapsible-head collapsed" id="networkToggle">
+            <div class="section-title">Network Settings</div>
+            <span class="chevron">▼</span>
+        </div>
+        <div class="collapsible-body collapsed" id="networkBody">
+            <div class="empty-note" style="margin-bottom:10px;">
+                Nur Clients aus diesen IP-Bereichen dürfen auf das Tool zugreifen. Ein Bereich endet mit einem Punkt für ein Präfix (z.B. <code>192.168.178.</code>) oder ist eine einzelne IP (z.B. <code>100.120.183.112</code>). localhost ist immer erlaubt.
+            </div>
+            <div id="networkRangesList"></div>
             <div class="add-category-row">
-                <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
-                <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
+                <input type="text" class="cat-input" id="newNetworkRange" placeholder="z.B. 192.168.178. oder 10.0.0.5" maxlength="60">
+                <button class="btn-secondary" id="addNetworkRangeBtn"><span class="icon-mono">➕</span> Bereich hinzufügen</button>
             </div>
-        </div>
-    </div>
-
-    <!-- Zielverzeichnisse -->
-    <div class="card">
-        <div class="collapsible-head collapsed" id="targetToggle">
-            <div class="section-title">Zielverzeichnisse</div>
-            <span class="chevron">▼</span>
-        </div>
-        <div class="collapsible-body collapsed" id="targetBody">
-            <div id="targetBlocks"></div>
-        </div>
-    </div>
-
-    <!-- Leere Ordner in den Zielverzeichnissen finden & löschen -->
-    <div class="card">
-        <div class="collapsible-head collapsed" id="emptyDirsToggle">
-            <div class="section-title">Leere Ordner</div>
-            <span class="chevron">▼</span>
-        </div>
-        <div class="collapsible-body collapsed" id="emptyDirsBody">
-            <div class="btn-row">
-                <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
-                <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
-            </div>
-            <div class="empty-dirs-list" id="emptyDirsList">
-                <div class="empty-note">Noch nicht geprüft.</div>
+            <div class="btn-row" style="margin-top:10px;">
+                <button class="btn-secondary btn-danger" id="networkRangesResetBtn" style="flex:1;">Auf Standard zurücksetzen</button>
             </div>
         </div>
     </div>
@@ -872,6 +950,21 @@
     </div>
 </div>
 
+<!-- Rückfrage: Datei wurde schon einmal gebeamt -->
+<div class="modal-backdrop" id="duplicateModalBackdrop">
+    <div class="modal" style="width: 420px;">
+        <div class="modal-head">
+            <h3>Bereits heruntergeladen</h3>
+            <button class="modal-close" id="duplicateModalCloseBtn">✕</button>
+        </div>
+        <div style="padding: 16px 20px; font-size: 13.5px; line-height: 1.6; color: #ddd;" id="duplicateModalBody"></div>
+        <div class="modal-foot">
+            <button class="btn-secondary" id="duplicateModalCancelBtn">Überspringen</button>
+            <button id="duplicateModalConfirmBtn">Trotzdem beamen</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // Wird beim Start (und nach dem Anlegen einer neuen Kategorie) vom
     // Server geladen – enthält immer mindestens Filme/Serien/Musik, plus
@@ -915,6 +1008,55 @@
             }
         }
 
+        // ---- Rückfrage, falls eine Datei schon einmal gebeamt wurde ----
+        const dupModal = {
+            backdrop: document.getElementById('duplicateModalBackdrop'),
+            body: document.getElementById('duplicateModalBody'),
+            confirmBtn: document.getElementById('duplicateModalConfirmBtn'),
+            cancelBtn: document.getElementById('duplicateModalCancelBtn'),
+            closeBtn: document.getElementById('duplicateModalCloseBtn'),
+        };
+
+        function formatDupTimestamp(iso) {
+            if (!iso) return 'unbekanntem Zeitpunkt';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return 'unbekanntem Zeitpunkt';
+            return d.toLocaleDateString('de-DE') + ' um ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function checkAlreadyBeamed(fileName) {
+            try {
+                const res = await fetch('/api/check-history?fileName=' + encodeURIComponent(fileName));
+                return await res.json();
+            } catch (err) {
+                return { seenBefore: false };
+            }
+        }
+
+        // Zeigt die Rückfrage an und löst mit true (trotzdem beamen) oder
+        // false (überspringen) auf.
+        function askBeamAgain(fileName, info) {
+            return new Promise((resolve) => {
+                const times = info.count > 1 ? ` (insgesamt ${info.count}×, zuletzt am ${formatDupTimestamp(info.lastBeamedAt)})` : ` am ${formatDupTimestamp(info.lastBeamedAt)}`;
+                dupModal.body.innerHTML = `<p><strong>${escapeHtmlLocal(fileName)}</strong> wurde bereits${times} gebeamt.</p><p>Trotzdem erneut herunterladen?</p>`;
+
+                function cleanup(result) {
+                    dupModal.backdrop.classList.remove('open');
+                    dupModal.confirmBtn.removeEventListener('click', onConfirm);
+                    dupModal.cancelBtn.removeEventListener('click', onCancel);
+                    dupModal.closeBtn.removeEventListener('click', onCancel);
+                    resolve(result);
+                }
+                function onConfirm() { cleanup(true); }
+                function onCancel() { cleanup(false); }
+
+                dupModal.confirmBtn.addEventListener('click', onConfirm);
+                dupModal.cancelBtn.addEventListener('click', onCancel);
+                dupModal.closeBtn.addEventListener('click', onCancel);
+                dupModal.backdrop.classList.add('open');
+            });
+        }
+
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -933,10 +1075,19 @@
 
             const okFiles = [];
             const failedFiles = [];
+            const skippedFiles = [];
 
             for (let i = 0; i < files.length; i++) {
                 resultTitle.innerText = `⏳ Wird übertragen (${i + 1}/${files.length})...`;
                 try {
+                    const history = await checkAlreadyBeamed(files[i].name);
+                    if (history && history.seenBefore) {
+                        const proceed = await askBeamAgain(files[i].name, history);
+                        if (!proceed) {
+                            skippedFiles.push(files[i].name);
+                            continue;
+                        }
+                    }
                     await uploadOne(files[i]);
                     okFiles.push(files[i].name);
                 } catch (err) {
@@ -944,18 +1095,26 @@
                 }
             }
 
-            if (failedFiles.length === 0) {
+            const skippedHtml = skippedFiles.length
+                ? `<div style="margin-top:8px; color:#888;">Übersprungen (bereits gebeamt): ${skippedFiles.map(escapeHtmlLocal).join(', ')}</div>`
+                : '';
+
+            if (okFiles.length === 0 && failedFiles.length === 0 && skippedFiles.length > 0) {
+                resultCard.classList.remove('error-card');
+                resultTitle.innerText = 'Nichts übertragen';
+                resultBody.innerHTML = skippedHtml;
+            } else if (failedFiles.length === 0) {
                 resultCard.classList.remove('error-card');
                 resultTitle.innerText = okFiles.length > 1 ? '✔ Dateien erfolgreich gebeamt!' : '✔ Datei erfolgreich gebeamt!';
-                resultBody.innerHTML = okFiles.map((n) => `<div><strong>Datei:</strong> <span>${n}</span></div>`).join('');
+                resultBody.innerHTML = okFiles.map((n) => `<div><strong>Datei:</strong> <span>${n}</span></div>`).join('') + skippedHtml;
             } else if (okFiles.length === 0) {
                 resultCard.classList.add('error-card');
                 resultTitle.innerText = '✖ Fehler beim Upload';
-                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('');
+                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('') + skippedHtml;
             } else {
                 resultCard.classList.add('error-card');
                 resultTitle.innerText = `⚠ ${okFiles.length} von ${files.length} übertragen`;
-                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('');
+                resultBody.innerHTML = failedFiles.map((n) => `<div>${n}</div>`).join('') + skippedHtml;
             }
 
             fileInput.value = '';
@@ -1068,10 +1227,8 @@
         const el = {
             sourceBlocks: document.getElementById('sourceBlocks'),
             targetBlocks: document.getElementById('targetBlocks'),
-            sourceToggle: document.getElementById('sourceToggle'),
-            targetToggle: document.getElementById('targetToggle'),
-            sourceBody: document.getElementById('sourceBody'),
-            targetBody: document.getElementById('targetBody'),
+            fileManagementToggle: document.getElementById('fileManagementToggle'),
+            fileManagementBody: document.getElementById('fileManagementBody'),
             lastMoveAt: document.getElementById('lastMoveAt'),
             moveResults: document.getElementById('moveResults'),
             restartBtn: document.getElementById('restartBtn'),
@@ -1085,17 +1242,22 @@
             toast: document.getElementById('toast'),
             moveNowBtn: document.getElementById('moveNowBtn'),
             nzbgetQueueCard: document.getElementById('nzbgetQueueCard'),
+            nzbgetActiveBox: document.getElementById('nzbgetActiveBox'),
             nzbgetQueueList: document.getElementById('nzbgetQueueList'),
             newCategoryLabel: document.getElementById('newCategoryLabel'),
             addCategoryBtn: document.getElementById('addCategoryBtn'),
             uploadDirPath: document.getElementById('uploadDirPath'),
             uploadDirChangeBtn: document.getElementById('uploadDirChangeBtn'),
             uploadDirResetBtn: document.getElementById('uploadDirResetBtn'),
-            emptyDirsToggle: document.getElementById('emptyDirsToggle'),
-            emptyDirsBody: document.getElementById('emptyDirsBody'),
             emptyDirsCheckBtn: document.getElementById('emptyDirsCheckBtn'),
             emptyDirsDeleteBtn: document.getElementById('emptyDirsDeleteBtn'),
             emptyDirsList: document.getElementById('emptyDirsList'),
+            networkToggle: document.getElementById('networkToggle'),
+            networkBody: document.getElementById('networkBody'),
+            networkRangesList: document.getElementById('networkRangesList'),
+            newNetworkRange: document.getElementById('newNetworkRange'),
+            addNetworkRangeBtn: document.getElementById('addNetworkRangeBtn'),
+            networkRangesResetBtn: document.getElementById('networkRangesResetBtn'),
 
             modalBackdrop: document.getElementById('modalBackdrop'),
             modalTitle: document.getElementById('modalTitle'),
@@ -1274,6 +1436,87 @@
             if (e.key === 'Enter') { e.preventDefault(); el.addCategoryBtn.click(); }
         });
 
+        // ---- Network Settings: erlaubte IP-Bereiche ----
+        function renderNetworkRanges(ranges) {
+            state.networkRanges = ranges || [];
+            if (!state.networkRanges.length) {
+                el.networkRangesList.innerHTML = '<div class="empty-note">Keine Bereiche definiert – Zugriff nur von localhost.</div>';
+                return;
+            }
+            el.networkRangesList.innerHTML = state.networkRanges.map((range, i) => `
+                <div class="network-range-row">
+                    <span class="network-range-value">${escapeHtml(range)}</span>
+                    <button class="btn-secondary btn-danger network-range-remove" data-index="${i}">Entfernen</button>
+                </div>
+            `).join('');
+            el.networkRangesList.querySelectorAll('.network-range-remove').forEach((btn) => {
+                btn.addEventListener('click', () => removeNetworkRange(parseInt(btn.dataset.index, 10)));
+            });
+        }
+
+        async function saveNetworkRanges(ranges) {
+            const data = await api('/api/network-ranges', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ranges }),
+            });
+            renderNetworkRanges(data.ranges);
+        }
+
+        async function loadNetworkRanges() {
+            try {
+                const data = await api('/api/network-ranges');
+                renderNetworkRanges(data.ranges);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        }
+
+        async function removeNetworkRange(index) {
+            const next = state.networkRanges.slice();
+            const removed = next.splice(index, 1)[0];
+            if (!confirm(`IP-Bereich "${removed}" wirklich entfernen?`)) return;
+            try {
+                await saveNetworkRanges(next);
+                showToast('IP-Bereich entfernt.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        }
+
+        el.addNetworkRangeBtn.addEventListener('click', async () => {
+            const value = el.newNetworkRange.value.trim();
+            if (!value) {
+                showToast('Bitte einen IP-Bereich oder eine IP eingeben.', false);
+                return;
+            }
+            el.addNetworkRangeBtn.disabled = true;
+            try {
+                const next = (state.networkRanges || []).concat([value]);
+                await saveNetworkRanges(next);
+                el.newNetworkRange.value = '';
+                showToast(`IP-Bereich "${value}" hinzugefügt.`, true);
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.addNetworkRangeBtn.disabled = false;
+            }
+        });
+        el.newNetworkRange.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); el.addNetworkRangeBtn.click(); }
+        });
+
+        el.networkRangesResetBtn.addEventListener('click', async () => {
+            if (!confirm('Erlaubte IP-Bereiche wirklich auf den Standard zurücksetzen?')) return;
+            try {
+                const data = await api('/api/network-ranges/reset', { method: 'POST' });
+                renderNetworkRanges(data.ranges);
+                showToast('Auf Standard zurückgesetzt.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            }
+        });
+
         // ---- Übersicht (Dateien je Verzeichnis) laden ----
         async function loadOverview() {
             try {
@@ -1360,23 +1603,48 @@
             }
         }
 
-        // ---- NZBGet-Warteschlange: alle Elemente (Name + Größe) ----
+        // ---- NZBGet-Status: immer sichtbar – aktiver Download (mit
+        // Fortschritt) + restliche Warteschlange, unabhängig davon, ob die
+        // Datei über dieses Tool gebeamt oder direkt in NZBGet gestartet
+        // wurde. ----
         async function loadNzbgetQueue() {
             try {
                 const data = await api('/api/nzbget-queue');
-                if (!data.reachable || !data.items || !data.items.length) {
-                    el.nzbgetQueueCard.style.display = 'none';
+
+                if (!data.reachable) {
+                    el.nzbgetActiveBox.innerHTML = '<div class="empty-note">NZBGet nicht erreichbar.</div>';
+                    el.nzbgetQueueList.innerHTML = '';
                     return;
                 }
-                el.nzbgetQueueCard.style.display = 'block';
-                el.nzbgetQueueList.innerHTML = data.items.map((it) => `
-                    <div class="queue-row">
-                        <span class="queue-name">${escapeHtml(it.name)}</span>
-                        <span class="queue-size">${it.sizeMB} MB</span>
-                    </div>
-                `).join('');
+
+                if (data.active) {
+                    const a = data.active;
+                    el.nzbgetActiveBox.innerHTML = `
+                        <div class="queue-active">
+                            <div class="queue-active-name">${escapeHtml(a.name)}</div>
+                            <div class="nzb-progress-bar"><div class="nzb-progress-fill" style="width:${a.percent}%;"></div></div>
+                            <div class="nzb-progress-label">${a.percent}% · ${a.downloadedMB} / ${a.totalMB} MB</div>
+                        </div>
+                    `;
+                } else {
+                    el.nzbgetActiveBox.innerHTML = '';
+                }
+
+                if (data.items && data.items.length) {
+                    el.nzbgetQueueList.innerHTML = data.items.map((it) => `
+                        <div class="queue-row">
+                            <span class="queue-name">${escapeHtml(it.name)}</span>
+                            <span class="queue-size">${it.sizeMB} MB</span>
+                        </div>
+                    `).join('');
+                } else if (!data.active) {
+                    el.nzbgetQueueList.innerHTML = '<div class="empty-note">Keine aktiven Downloads.</div>';
+                } else {
+                    el.nzbgetQueueList.innerHTML = '';
+                }
             } catch (err) {
-                el.nzbgetQueueCard.style.display = 'none';
+                el.nzbgetActiveBox.innerHTML = '<div class="empty-note">Status konnte nicht geladen werden.</div>';
+                el.nzbgetQueueList.innerHTML = '';
             }
         }
 
@@ -1651,10 +1919,9 @@
             });
         }
 
-        setupCollapsible(el.sourceToggle, el.sourceBody);
-        setupCollapsible(el.targetToggle, el.targetBody);
+        setupCollapsible(el.fileManagementToggle, el.fileManagementBody);
         setupCollapsible(el.hwToggle, el.hwBody);
-        setupCollapsible(el.emptyDirsToggle, el.emptyDirsBody);
+        setupCollapsible(el.networkToggle, el.networkBody);
 
         // ---- Server verwalten ----
         el.restartBtn.addEventListener('click', async () => {
@@ -1685,6 +1952,7 @@
         setInterval(loadNzbgetQueue, 6000);
 
         loadConfig();
+        loadNetworkRanges();
         loadStatus();
         loadHardware();
         loadMoveStatus();

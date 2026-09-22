@@ -57,8 +57,20 @@ function slugifyCategoryKey(label) {
     return key;
 }
 
-const ALLOWED_IP_PREFIXES = ['192.168.178.', '100.77.148.'];
-const ALLOWED_EXACT_IPS = ['100.120.183.112'];
+// Standard-Werte für erlaubte IP-Bereiche – werden beim ersten Start in
+// config.networkRanges übernommen und können danach über die UI (Network
+// Settings) verwaltet werden. Ein Eintrag, der mit einem Punkt endet, wird
+// als Präfix behandelt (z.B. "192.168.178." erlaubt alle 192.168.178.x),
+// alles andere als exakte IP.
+const DEFAULT_NETWORK_RANGES = ['192.168.178.', '100.77.148.', '100.120.183.112'];
+
+function isIpInRanges(ip, ranges) {
+    if (ip === '127.0.0.1' || ip === '::1') return true;
+    return (ranges || []).some((range) => {
+        if (typeof range !== 'string' || !range) return false;
+        return range.endsWith('.') ? ip.startsWith(range) : ip === range;
+    });
+}
 
 // -------------------------------------------------------------------------
 // MQTT (Home Assistant) – Zugangsdaten
@@ -106,6 +118,10 @@ let nzbgetStatus = null; // Status des aktuell ANGEZEIGTEN Eintrags
 let nzbgetReachable = false;
 let totalDownloadsCount = 0; // Gesamtzahl aller gebeamten NZBs (aus aktionen.log)
 const NZB_BATCH_MAX = 30;
+// Merkt sich, ob die NZBGet-Warteschlange beim letzten Poll noch nicht leer
+// war – nur bei einem Wechsel "war aktiv -> jetzt leer" wird der kurze
+// "fertig"-Impuls an Home Assistant gesendet (statt bei jedem Poll erneut).
+let queueWasActive = false;
 
 // -------------------------------------------------------------------------
 // Persistente Konfiguration: Quell-/Zielverzeichnis je Kategorie. Die drei
@@ -129,6 +145,10 @@ function loadConfig() {
         // Ablageordner für Direkt-Uploads ("Beamen") – wenn nicht gesetzt,
         // wird der fest einprogrammierte UPLOAD_DIR als Standard genutzt.
         uploadDir: typeof parsed.uploadDir === 'string' && parsed.uploadDir ? parsed.uploadDir : null,
+        // Erlaubte IP-Bereiche für den Zugriff auf das Tool (Network Settings).
+        networkRanges: (Array.isArray(parsed.networkRanges) && parsed.networkRanges.length)
+            ? parsed.networkRanges.filter((r) => typeof r === 'string' && r.trim())
+            : DEFAULT_NETWORK_RANGES.slice(),
     };
 
     // Sicherstellen, dass jede bekannte Kategorie (Basis + benutzerdefiniert)
@@ -250,9 +270,31 @@ setInterval(renderDashboard, 3000);
 
 // -------------------------------------------------------------------------
 // Aktions-Log: dauerhafte Protokollierung (u.a. NZB-Übertragungen) in einer
-// Datei, eine JSON-Zeile pro Eintrag. Grundlage für den späteren
-// Dubletten-Check ("wurde dieser Film/diese Serie schon geladen?").
+// Datei, eine JSON-Zeile pro Eintrag. Grundlage für den Dubletten-Check
+// ("wurde diese Datei schon einmal gebeamt?").
 // -------------------------------------------------------------------------
+
+// fileName (normalisiert, siehe normalizeFileKey) -> { count, lastBeamedAt }
+// Wird beim Start aus aktionen.log aufgebaut und bei jedem neuen Beam
+// live nachgeführt – überlebt also Neustarts.
+let beamedFileHistory = new Map();
+
+function normalizeFileKey(fileName) {
+    return String(fileName || '')
+        .toLowerCase()
+        .replace(/\.nzb$/i, '')
+        .trim();
+}
+
+function recordBeamedFileHistory(fileName, timestamp) {
+    const key = normalizeFileKey(fileName);
+    if (!key) return;
+    const existing = beamedFileHistory.get(key);
+    beamedFileHistory.set(key, {
+        count: (existing ? existing.count : 0) + 1,
+        lastBeamedAt: timestamp,
+    });
+}
 
 function logAction(entry) {
     const record = { timestamp: new Date().toISOString(), ...entry };
@@ -264,21 +306,29 @@ function logAction(entry) {
         if (entry.action === 'nzb_beamed') {
             totalDownloadsCount++;
             publishTotalDownloads();
+            recordBeamedFileHistory(entry.fileName, record.timestamp);
         }
     });
 }
 
 // Zählt beim Start, wie viele NZBs insgesamt schon gebeamt wurden (für den
-// "Gesamt gebeamte NZBs"-Sensor in Home Assistant, überlebt Neustarts).
+// "Gesamt gebeamte NZBs"-Sensor in Home Assistant, überlebt Neustarts), und
+// baut gleichzeitig die Dubletten-Historie auf.
 function initTotalDownloadsCount() {
     fs.readFile(ACTION_LOG_PATH, 'utf-8', (err, data) => {
         if (err) return;
-        totalDownloadsCount = data
+        const beamedEntries = data
             .split('\n')
             .filter(Boolean)
-            .filter((line) => {
-                try { return JSON.parse(line).action === 'nzb_beamed'; } catch (e) { return false; }
-            }).length;
+            .map((line) => {
+                try { return JSON.parse(line); } catch (e) { return null; }
+            })
+            .filter((entry) => entry && entry.action === 'nzb_beamed');
+
+        totalDownloadsCount = beamedEntries.length;
+        beamedFileHistory = new Map();
+        beamedEntries.forEach((entry) => recordBeamedFileHistory(entry.fileName, entry.timestamp));
+
         publishTotalDownloads();
     });
 }
@@ -319,12 +369,12 @@ function ipFilter(req, res, next) {
     let ip = req.ip || (req.connection && req.connection.remoteAddress) || '';
     if (ip.startsWith('::ffff:')) ip = ip.slice(7);
 
-    if (ip === '127.0.0.1' || ip === '::1' || ALLOWED_IP_PREFIXES.some((p) => ip.startsWith(p)) || ALLOWED_EXACT_IPS.includes(ip)) {
+    if (isIpInRanges(ip, config.networkRanges)) {
         return next();
     }
 
     logEvent(`Zugriff blockiert von IP: ${ip}`);
-    res.status(403).send('Zugriff verweigert: Nur aus dem lokalen Netzwerk (192.168.178.x) erlaubt.');
+    res.status(403).send('Zugriff verweigert: Diese IP ist nicht für den Zugriff freigegeben.');
 }
 
 app.use(ipFilter);
@@ -472,26 +522,42 @@ function matchesNzbName(candidate, targetLower) {
     return c === targetLower || c.includes(targetLower) || targetLower.includes(c);
 }
 
+// Ein Element der NZBGet-Warteschlange gilt als "gerade aktiv", wenn NZBGet
+// es mit dem Status DOWNLOADING führt. Solche Elemente werden aus der
+// Warteschlangen-Anzeige ausgeblendet, weil sie bereits prominent als
+// aktiver Download in "Letzte NZB" gezeigt werden – doppelte Anzeige
+// vermeiden.
+function isActivelyDownloading(group) {
+    return String((group && group.Status) || '').toUpperCase() === 'DOWNLOADING';
+}
+
+// Rechnet aus einem NZBGet-Warteschlangen-Element (listgroups-Eintrag) den
+// Downloadfortschritt aus – gemeinsam genutzt von computeStatusForItem()
+// (pro Batch-Eintrag) und /api/nzbget-queue (allgemeiner Status, unabhängig
+// davon, ob die Datei über dieses Tool gebeamt wurde).
+function groupProgress(group) {
+    const totalMB = group.FileSizeMB || 0;
+    const remainingMB = group.RemainingSizeMB || 0;
+    const downloadedMB = group.DownloadedSizeMB != null
+        ? group.DownloadedSizeMB
+        : Math.max(0, totalMB - remainingMB);
+
+    return {
+        status: group.Status,
+        totalMB: round1(totalMB),
+        downloadedMB: round1(downloadedMB),
+        remainingMB: round1(remainingMB),
+        percent: totalMB > 0 ? round1((downloadedMB / totalMB) * 100) : 0,
+        health: group.Health,
+    };
+}
+
 function computeStatusForItem(item, groups, history) {
     const targetName = item.fileName.replace(/\.nzb$/i, '').toLowerCase();
 
     const match = groups.find((g) => matchesNzbName(g.NZBName, targetName));
     if (match) {
-        const totalMB = match.FileSizeMB || 0;
-        const remainingMB = match.RemainingSizeMB || 0;
-        const downloadedMB = match.DownloadedSizeMB != null
-            ? match.DownloadedSizeMB
-            : Math.max(0, totalMB - remainingMB);
-
-        return {
-            phase: 'active',
-            status: match.Status,
-            totalMB: round1(totalMB),
-            downloadedMB: round1(downloadedMB),
-            remainingMB: round1(remainingMB),
-            percent: totalMB > 0 ? round1((downloadedMB / totalMB) * 100) : 0,
-            health: match.Health,
-        };
+        return { phase: 'active', ...groupProgress(match) };
     }
 
     const histMatch = history.find((h) => matchesNzbName(h.NZBName || h.Name, targetName));
@@ -546,11 +612,12 @@ async function updateNzbgetStatus() {
         const groups = await nzbgetCall('listgroups', [0]);
         nzbgetReachable = true;
         publishNzbgetReachable(true);
-        publishNzbgetQueue(groups);
+        const queueEmpty = publishNzbgetQueue(groups);
 
         if (nzbBatch.length === 0) {
             nzbgetStatus = null;
             currentNzbInfo = null;
+            queueWasActive = !queueEmpty;
             publishNzbgetStatus();
             return;
         }
@@ -573,17 +640,39 @@ async function updateNzbgetStatus() {
             }
         }
 
-        // Anzeige: aktiver Download hat Vorrang, sonst die zuletzt gesendete
-        // NZB (unabhängig von ihrem Status).
-        const displayItem = activeItem || nzbBatch[nzbBatch.length - 1];
-        currentNzbInfo = displayItem;
-        nzbgetStatus = displayItem.nzbget;
+        // Wichtig: NICHT allein auf eine leere NZBGet-Warteschlange
+        // (queueEmpty) abstellen – direkt nach dem Beamen ist die
+        // Warteschlange oft noch kurz leer, weil NZBGet die Datei aus dem
+        // Watch-Ordner erst einliest ("unknown"-Phase). Das würde die
+        // gerade gebeamte Datei sofort wieder verschwinden lassen, statt
+        // ihren Verarbeitungs-Status zu zeigen. Zurückgesetzt wird daher
+        // erst, wenn WIRKLICH jeder Eintrag unseres eigenen Batches den
+        // Status "done" erreicht hat.
+        const allBatchDone = nzbBatch.every((it) => it.nzbget && it.nzbget.phase === 'done');
 
-        // Alte, bereits abgeschlossene Einträge am Anfang der Liste
-        // entfernen, damit die Liste nicht unbegrenzt wächst.
-        while (nzbBatch.length > NZB_BATCH_MAX && nzbBatch[0].nzbget && nzbBatch[0].nzbget.phase !== 'active') {
-            nzbBatch.shift();
+        if (allBatchDone) {
+            // Alle von diesem Tool gestarteten Downloads sind fertig –
+            // Anzeige komplett zurücksetzen, als wäre der Server gerade neu
+            // gestartet: keine alten Dateinamen bleiben sichtbar.
+            nzbBatch = [];
+            currentNzbInfo = null;
+            nzbgetStatus = null;
+            publishNzbInfo(); // "aktuelle NZB" auch in Home Assistant zurücksetzen
+        } else {
+            // Anzeige: aktiver Download hat Vorrang, sonst die zuletzt
+            // gesendete NZB (unabhängig von ihrem Status).
+            const displayItem = activeItem || nzbBatch[nzbBatch.length - 1];
+            currentNzbInfo = displayItem;
+            nzbgetStatus = displayItem.nzbget;
+
+            // Alte, bereits abgeschlossene Einträge am Anfang der Liste
+            // entfernen, damit die Liste nicht unbegrenzt wächst.
+            while (nzbBatch.length > NZB_BATCH_MAX && nzbBatch[0].nzbget && nzbBatch[0].nzbget.phase !== 'active') {
+                nzbBatch.shift();
+            }
         }
+
+        queueWasActive = !queueEmpty;
     } catch (err) {
         nzbgetReachable = false;
         nzbgetStatus = null;
@@ -601,44 +690,88 @@ function publishNzbgetReachable(reachable) {
     mqttClient.publish(`${MQTT_BASE}/nzb/nzbget_reachable`, reachable ? 'online' : 'offline', { retain: true });
 }
 
+// Meldet die Warteschlange an Home Assistant und gibt zurück, ob sie
+// gerade komplett leer ist (auch wenn MQTT nicht verbunden ist – der
+// Rückgabewert wird auch für den GUI-Reset in updateNzbgetStatus() benötigt).
 function publishNzbgetQueue(groups) {
-    if (!mqttClient || !mqttClient.connected) return;
-    const items = (groups || []).map((g) => ({
-        name: g.NZBName || g.NZBFilename || 'unbekannt',
-        size_mb: round1(g.FileSizeMB || 0),
-    }));
+    const allGroups = groups || [];
+    const queueEmpty = allGroups.length === 0;
+
+    if (!mqttClient || !mqttClient.connected) return queueEmpty;
+
+    // Aktiv herunterladende Elemente aus der Anzeige-Liste ausblenden – die
+    // werden bereits prominent als "Letzte NZB" gezeigt, eine doppelte
+    // Anzeige in der Warteschlange ist nur verwirrend.
+    const items = allGroups
+        .filter((g) => !isActivelyDownloading(g))
+        .map((g) => ({
+            name: g.NZBName || g.NZBFilename || 'unbekannt',
+            size_mb: round1(g.FileSizeMB || 0),
+        }));
     mqttClient.publish(`${MQTT_BASE}/nzb/queue_count`, String(items.length), { retain: true });
     mqttClient.publish(`${MQTT_BASE}/nzb/queue_items`, JSON.stringify({ items }), { retain: true });
 
-    // "Alle NZB-Prozesse beendet": an, solange die Warteschlange leer ist
-    // (nichts wird mehr heruntergeladen). Wird nur aufgerufen, wenn NZBGet
-    // gerade erreichbar war – siehe publishAllDoneUnknown() für den Fall,
-    // dass NZBGet nicht erreichbar ist.
-    mqttClient.publish(`${MQTT_BASE}/nzb/all_done`, items.length === 0 ? 'done' : 'active', { retain: true });
+    // Kein Dauerzustand mehr, sondern ein kurzer Impuls: nur beim Wechsel
+    // von "es lief noch etwas" zu "Warteschlange leer" einmal "done"
+    // senden. Home Assistant setzt den binary_sensor über off_delay selbst
+    // nach ein paar Sekunden wieder zurück (siehe publishNzbDiscovery()).
+    if (queueEmpty && queueWasActive) {
+        mqttClient.publish(`${MQTT_BASE}/nzb/all_done`, 'done', { retain: false });
+    }
+
+    return queueEmpty;
 }
 
 // Wird aufgerufen, wenn NZBGet nicht erreichbar ist – dann ist unklar, ob
-// noch etwas läuft, daher weder "done" noch "active" melden.
+// noch etwas läuft, daher keinen "fertig"-Impuls senden.
 function publishAllDoneUnknown() {
-    if (!mqttClient || !mqttClient.connected) return;
-    mqttClient.publish(`${MQTT_BASE}/nzb/all_done`, 'unbekannt', { retain: true });
+    queueWasActive = false;
 }
 
 setTimeout(updateNzbgetStatus, 5000);
 setInterval(updateNzbgetStatus, NZBGET_POLL_INTERVAL_MS);
 
-// Komplette NZBGet-Warteschlange abfragen (alle Elemente, nicht nur die
-// zuletzt gebeamte NZB) – fürs Frontend auf Name + Größe reduziert.
+// Prüft, ob eine Datei (nach Namen) schon einmal gebeamt wurde – Grundlage
+// für die Rückfrage im Frontend, bevor eine bereits heruntergeladene Datei
+// erneut übertragen wird.
+app.get('/api/check-history', (req, res) => {
+    const fileName = req.query.fileName;
+    if (!fileName) {
+        return res.status(400).json({ error: 'Kein Dateiname angegeben.' });
+    }
+    const info = beamedFileHistory.get(normalizeFileKey(fileName));
+    if (!info) {
+        return res.json({ seenBefore: false });
+    }
+    res.json({ seenBefore: true, count: info.count, lastBeamedAt: info.lastBeamedAt });
+});
+
+// Kompletter NZBGet-Status: die gerade aktiv herunterladende Datei (mit
+// Fortschritt) plus die restliche Warteschlange – unabhängig davon, ob eine
+// Datei über dieses Tool gebeamt oder direkt in NZBGet gestartet wurde.
+// Bildet das "immer sichtbare" Status-Fenster im Frontend.
 app.get('/api/nzbget-queue', async (req, res) => {
     try {
         const groups = await nzbgetCall('listgroups', [0]);
-        const items = (groups || []).map((g) => ({
-            name: g.NZBName || g.NZBFilename || 'unbekannt',
-            sizeMB: round1(g.FileSizeMB || 0),
-        }));
-        res.json({ items, reachable: true });
+        const allGroups = groups || [];
+
+        const activeGroup = allGroups.find((g) => isActivelyDownloading(g));
+        const active = activeGroup ? {
+            name: activeGroup.NZBName || activeGroup.NZBFilename || 'unbekannt',
+            ...groupProgress(activeGroup),
+        } : null;
+
+        // Aktiv herunterladendes Element aus der Warteliste ausblenden – das
+        // wird bereits separat als "active" gezeigt, keine doppelte Anzeige.
+        const items = allGroups
+            .filter((g) => !isActivelyDownloading(g))
+            .map((g) => ({
+                name: g.NZBName || g.NZBFilename || 'unbekannt',
+                sizeMB: round1(g.FileSizeMB || 0),
+            }));
+        res.json({ active, items, reachable: true });
     } catch (err) {
-        res.json({ items: [], reachable: false, error: err.message });
+        res.json({ active: null, items: [], reachable: false, error: err.message });
     }
 });
 
@@ -834,6 +967,45 @@ app.post('/api/upload-dir/clear', (req, res) => {
     saveConfig(config);
     logEvent(`Beam-Ablageordner auf Standard zurückgesetzt: ${getUploadDir()}`);
     res.json({ uploadDir: getUploadDir(), config });
+});
+
+// -------------------------------------------------------------------------
+// Network Settings: erlaubte IP-Bereiche für den Zugriff auf das Tool.
+// Ein Eintrag, der mit einem Punkt endet, wirkt als Präfix (z.B.
+// "192.168.178." erlaubt 192.168.178.x), alles andere als exakte IP.
+// localhost ist immer erlaubt und muss nicht extra aufgeführt werden.
+// -------------------------------------------------------------------------
+
+app.get('/api/network-ranges', (req, res) => {
+    res.json({ ranges: config.networkRanges || [] });
+});
+
+app.post('/api/network-ranges', (req, res) => {
+    const ranges = req.body && req.body.ranges;
+    if (!Array.isArray(ranges) || ranges.some((r) => typeof r !== 'string')) {
+        return res.status(400).json({ error: 'Ungültige Liste von IP-Bereichen.' });
+    }
+    const cleaned = [...new Set(ranges.map((r) => r.trim()).filter(Boolean))];
+
+    // Selbst-Aussperren verhindern: die anfragende IP muss nach der Änderung
+    // weiterhin Zugriff haben (localhost ist ohnehin immer erlaubt).
+    let requestIp = req.ip || (req.connection && req.connection.remoteAddress) || '';
+    if (requestIp.startsWith('::ffff:')) requestIp = requestIp.slice(7);
+    if (!isIpInRanges(requestIp, cleaned)) {
+        return res.status(400).json({ error: `Diese Änderung würde deinen eigenen Zugriff sperren (${requestIp} wäre nicht mehr erlaubt). Bitte diese IP mit aufnehmen.` });
+    }
+
+    config.networkRanges = cleaned;
+    saveConfig(config);
+    logEvent(`Erlaubte IP-Bereiche geändert: ${cleaned.join(', ')}`);
+    res.json({ ranges: config.networkRanges });
+});
+
+app.post('/api/network-ranges/reset', (req, res) => {
+    config.networkRanges = DEFAULT_NETWORK_RANGES.slice();
+    saveConfig(config);
+    logEvent(`Erlaubte IP-Bereiche auf Standard zurückgesetzt: ${config.networkRanges.join(', ')}`);
+    res.json({ ranges: config.networkRanges });
 });
 
 // -------------------------------------------------------------------------
@@ -1164,7 +1336,8 @@ function getServerIp() {
     for (const name of Object.keys(interfaces)) {
         for (const iface of interfaces[name]) {
             if (iface.family === 'IPv4' && !iface.internal) {
-                if (ALLOWED_IP_PREFIXES.some((p) => iface.address.startsWith(p))) return iface.address;
+                const prefixRanges = (config.networkRanges || []).filter((r) => r.endsWith('.'));
+                if (prefixRanges.some((p) => iface.address.startsWith(p))) return iface.address;
                 if (!fallback) fallback = iface.address;
             }
         }
@@ -1642,15 +1815,19 @@ function publishNzbDiscovery() {
         icon: 'mdi:format-list-bulleted',
     });
 
-    // Zeigt an, ob gerade noch NZB-Downloads laufen oder alles fertig ist
-    // (leere NZBGet-Warteschlange). "unbekannt", solange NZBGet nicht
-    // erreichbar ist.
+    // Kurzer Impuls statt Dauerzustand: wechselt für ein paar Sekunden auf
+    // "an", sobald die komplette NZBGet-Warteschlange gerade fertig
+    // geworden ist, und fällt danach automatisch wieder zurück (off_delay –
+    // Home Assistant übernimmt das Zurücksetzen selbst). Eignet sich als
+    // Trigger für eine Automation ("Downloads fertig"), bleibt aber nicht
+    // dauerhaft "an" hängen.
     publishDiscoveryEntity('binary_sensor', 'all_downloads_done', {
-        name: 'Alle NZB-Downloads abgeschlossen',
+        name: 'NZB-Downloads gerade abgeschlossen',
         unique_id: `${DEVICE_ID}_all_downloads_done`,
         state_topic: `${MQTT_BASE}/nzb/all_done`,
         payload_on: 'done',
-        payload_off: 'active',
+        payload_off: 'idle',
+        off_delay: 5,
         icon: 'mdi:check-circle-outline',
     });
 }
@@ -1754,7 +1931,7 @@ setInterval(updateHardwareInfo, 15000);
 
 app.listen(PORT, '0.0.0.0', () => {
     logEvent(`Server gestartet auf Port ${PORT}`);
-    logEvent(`Erlaubt: ${ALLOWED_IP_PREFIXES.map((p) => p + 'x').join(', ')}, ${ALLOWED_EXACT_IPS.join(', ')}, localhost`);
+    logEvent(`Erlaubt: ${(config.networkRanges || []).join(', ')}, localhost`);
     logEvent(`Beam-Ablageordner: ${getUploadDir()}`);
     connectMqtt();
 });
