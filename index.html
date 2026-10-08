@@ -231,6 +231,8 @@
             min-height: 100px;
             overflow: hidden;
             transition: background 0.15s ease;
+            /* Bezugsgröße für die Logo-Schrift (cqi = % der Kartenbreite) */
+            container-type: inline-size;
         }
 
         /* Wabernde Plasma-Masse: fünf weich verwischte, kräftig bunte
@@ -427,11 +429,12 @@
 
         .header-text { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-        /* Titel: riesiger, statischer Schriftzug ohne Animation, der als
-           Wasserzeichen im Hintergrund der Box liegt – bewusst größer als
-           die Box selbst, das "overflow: hidden" der Karte schneidet ihn
-           sauber ab, sodass man nicht alles sieht, aber erkennt was es
-           heißen soll. "NZB" in Hellblau (Akzentfarbe, in beiden Themes
+        /* Titel: großer, statischer Schriftzug ohne Animation. Die Größe
+           richtet sich nach der Breite der Header-Karte (nicht des
+           Fensters), damit der Schriftzug bei jeder Fensterbreite komplett
+           in die Karte passt – die Karte ist je nach Breakpoint auf
+           480/700/900px begrenzt, mit vw wurde das Logo zwischen den
+           Breakpoints stark abgeschnitten. "NZB" in Hellblau (Akzentfarbe, in beiden Themes
            gleich gut lesbar), "BEAMER" in der Theme-Textfarbe des Headers –
            passt sich also automatisch an Night/Day an (weiß im dunklen,
            dunkel im hellen Theme). */
@@ -446,7 +449,8 @@
             gap: 0.1em;
             font-family: 'Poppins', 'Segoe UI', sans-serif;
             font-weight: 800;
-            font-size: clamp(44px, 15vw, 150px);
+            font-size: clamp(36px, 15vw, 150px);   /* Fallback ohne Container Queries */
+            font-size: clamp(36px, 16cqi, 150px);
             letter-spacing: 0px;
             white-space: nowrap;
             z-index: 1;
@@ -1026,7 +1030,13 @@
             color: var(--text-faint);
             margin-top: -3px;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
             font-variant-numeric: tabular-nums;
+        }
+        @media (max-width: 479px) {
+            .cover-strip-year { display: none; }
         }
         .cover-strip-refresh-row { text-align: center; margin-top: 2px; }
         .cover-strip-refresh-btn {
@@ -2397,6 +2407,15 @@
             return `translateX(calc(${-(COVER_BUFFER + shift)} * ${pitch}))`;
         }
 
+        // Datum des Beams als "TT.MM.JJ" – das Jahr steckt in einem eigenen
+        // Span, damit es auf schmalen Bildschirmen per CSS wegfallen kann.
+        function coverDateHtml(timestamp) {
+            const d = new Date(timestamp);
+            if (isNaN(d)) return '';
+            const pad = (v) => String(v).padStart(2, '0');
+            return `<span class="cover-strip-date">${pad(d.getDate())}.${pad(d.getMonth() + 1)}.<span class="cover-strip-year">${pad(d.getFullYear() % 100)}</span></span>`;
+        }
+
         function renderCoverStrip() {
             const track = el.coverStripTrack;
             const n = covers.length;
@@ -2414,7 +2433,7 @@
                     <div class="cover-strip-item${rel === 0 ? ' is-center' : ''}" data-rel="${rel}" data-url="${escapeHtml(e.posterUrl)}" title="${escapeHtml(e.fileName || '')}">
                         <img class="poster-thumb-lg" src="${escapeHtml(e.posterUrl)}" alt="" draggable="false">
                         <span class="cover-strip-name">${escapeHtml((e.fileName || '').replace(/\.nzb$/i, ''))}</span>
-                        ${e.timestamp ? `<span class="cover-strip-date">${escapeHtml(new Date(e.timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }))}</span>` : ''}
+                        ${e.timestamp ? coverDateHtml(e.timestamp) : ''}
                     </div>`;
             }
             // Ohne Animation zurück auf die Grundposition springen – optisch
