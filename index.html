@@ -967,11 +967,14 @@
            Cover (Platz 4) ist um 25 % vergrößert und im Fokus, die übrigen
            sind abgedunkelt. Der Track enthält links und rechts je 3 weitere
            Cover als Puffer, damit beim Weiterschieben nie eine Lücke
-           entsteht. Das vertikale Padding lässt Platz für die Vergrößerung
-           (Prozentwerte beziehen sich hier auf die Breite). */
+           entsteht. Die Leiste ist auf 7 Cover (max. 88px breit) begrenzt
+           und mittig, statt die ganze Kartenbreite zu füllen; das vertikale
+           Padding lässt Platz für die Vergrößerung. */
         .cover-strip {
             overflow: hidden;
-            padding: calc((100% - 6 * 10px) / 7 * 0.19 + 6px) 0;
+            max-width: calc(7 * 88px + 6 * 10px);
+            margin: 0 auto;
+            padding: 22px 0 32px;
             touch-action: pan-y;
             user-select: none;
         }
@@ -983,6 +986,9 @@
         }
         .cover-strip-item {
             flex: 0 0 calc((100% - 6 * 10px) / 7);
+            /* Ohne min-width: 0 würden lange Dateinamen (nowrap) das Cover
+               auf ihre volle Textbreite aufblähen. */
+            min-width: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -994,6 +1000,7 @@
         }
         .cover-strip-item.is-center {
             transform: scale(1.25);
+            transform-origin: center 40%;
             opacity: 1;
             z-index: 2;
             cursor: default;
@@ -1013,7 +1020,15 @@
             text-overflow: ellipsis;
             width: 100%;
         }
-        .cover-strip-refresh-row { text-align: center; margin-top: -2px; }
+        /* Datum des Beams unter dem Dateinamen */
+        .cover-strip-date {
+            font-size: 9px;
+            color: var(--text-faint);
+            margin-top: -3px;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+        .cover-strip-refresh-row { text-align: center; margin-top: 2px; }
         .cover-strip-refresh-btn {
             background: none;
             border: 1px solid var(--border-input);
@@ -2399,6 +2414,7 @@
                     <div class="cover-strip-item${rel === 0 ? ' is-center' : ''}" data-rel="${rel}" data-url="${escapeHtml(e.posterUrl)}" title="${escapeHtml(e.fileName || '')}">
                         <img class="poster-thumb-lg" src="${escapeHtml(e.posterUrl)}" alt="" draggable="false">
                         <span class="cover-strip-name">${escapeHtml((e.fileName || '').replace(/\.nzb$/i, ''))}</span>
+                        ${e.timestamp ? `<span class="cover-strip-date">${escapeHtml(new Date(e.timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }))}</span>` : ''}
                     </div>`;
             }
             // Ohne Animation zurück auf die Grundposition springen – optisch
