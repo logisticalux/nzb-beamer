@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 const mqtt = require('mqtt');
 const si = require('systeminformation');
@@ -160,6 +161,9 @@ function loadConfig() {
         sources: (parsed.sources && typeof parsed.sources === 'object') ? parsed.sources : {},
         targets: (parsed.targets && typeof parsed.targets === 'object') ? parsed.targets : {},
         categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+        // Zweites (Ausweich-)Zielverzeichnis je Kategorie: wird genutzt, wenn
+        // im ersten Ziel der Speicherplatz nicht reicht.
+        altTargets: (parsed.altTargets && typeof parsed.altTargets === 'object') ? parsed.altTargets : {},
         // Ablageordner für Direkt-Uploads ("Beamen") – wenn nicht gesetzt,
         // wird der fest einprogrammierte UPLOAD_DIR als Standard genutzt.
         uploadDir: typeof parsed.uploadDir === 'string' && parsed.uploadDir ? parsed.uploadDir : null,
@@ -167,6 +171,8 @@ function loadConfig() {
         networkRanges: (Array.isArray(parsed.networkRanges) && parsed.networkRanges.length)
             ? parsed.networkRanges.filter((r) => typeof r === 'string' && r.trim())
             : DEFAULT_NETWORK_RANGES.slice(),
+        // TMDB-API-Key für Filmcover (leer = Feature deaktiviert).
+        tmdbApiKey: (typeof parsed.tmdbApiKey === 'string') ? parsed.tmdbApiKey.trim() : '',
     };
 
     // Sicherstellen, dass jede bekannte Kategorie (Basis + benutzerdefiniert)
@@ -174,6 +180,7 @@ function loadConfig() {
     BASE_CATEGORIES.concat(cfg.categories).forEach((c) => {
         if (!(c.key in cfg.sources)) cfg.sources[c.key] = null;
         if (!(c.key in cfg.targets)) cfg.targets[c.key] = null;
+        if (!(c.key in cfg.altTargets)) cfg.altTargets[c.key] = null;
     });
 
     return cfg;
@@ -327,6 +334,39 @@ function logAction(entry) {
             recordBeamedFileHistory(entry.fileName, record.timestamp);
         }
     });
+    return record;
+}
+
+// Trägt ein erst NACH dem Schreiben aufgelöstes Poster nachträglich in genau
+// diesen Protokoll-Eintrag ein (per Zeitstempel + Dateiname identifiziert).
+// Damit kann der "nzb_beamed"-Eintrag sofort beim Upload geschrieben werden
+// (neue Uploads tauchen dann direkt im "Zuletzt heruntergeladen"-Streifen
+// und im Protokoll auf), ohne auf die TMDB-Antwort warten zu müssen – das
+// Cover wird einfach ergänzt, sobald es da ist.
+function patchActionLogPoster(timestamp, fileName, posterUrl) {
+    if (!posterUrl) return;
+    fs.readFile(ACTION_LOG_PATH, 'utf-8', (err, data) => {
+        if (err) return;
+        let changed = false;
+        const lines = data.split('\n').filter(Boolean).map((line) => {
+            if (changed) return line;
+            let entry;
+            try {
+                entry = JSON.parse(line);
+            } catch (e) {
+                return line;
+            }
+            if (entry.action === 'nzb_beamed' && entry.timestamp === timestamp && entry.fileName === fileName && !entry.posterUrl) {
+                entry.posterUrl = posterUrl;
+                changed = true;
+                return JSON.stringify(entry);
+            }
+            return line;
+        });
+        if (changed) {
+            fs.writeFile(ACTION_LOG_PATH, lines.join('\n') + '\n', () => {});
+        }
+    });
 }
 
 // Zählt beim Start, wie viele NZBs insgesamt schon gebeamt wurden (für den
@@ -378,6 +418,45 @@ app.get('/api/log', (req, res) => {
     });
 });
 
+// Cover-Filmstreifen: liefert die letzten paar Beams MIT Poster. Ältere
+// Protokoll-Einträge (von vor der TMDB-Anbindung bzw. von vor dieser
+// Funktion) haben noch kein gespeichertes posterUrl-Feld – für die wird das
+// Cover hier live nachgeholt (gleiche Cache-Logik wie beim NZBGet-Status),
+// damit der Streifen nicht erst ab dem nächsten NEUEN Download etwas zeigt,
+// sondern schon beim ersten Aufruf aus der vorhandenen Historie.
+app.get('/api/recent-covers', async (req, res) => {
+    const count = Math.min(20, Math.max(1, parseInt(req.query.count, 10) || 12));
+
+    fs.readFile(ACTION_LOG_PATH, 'utf-8', async (err, data) => {
+        if (err) return res.json({ covers: [] });
+
+        const entries = data
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => { try { return JSON.parse(line); } catch (e) { return null; } })
+            .filter((e) => e && e.action === 'nzb_beamed')
+            .reverse() // neueste zuerst
+            .slice(0, 50); // genug Kandidaten, um "count" mit Cover zu finden
+
+        const covers = [];
+        for (const e of entries) {
+            if (covers.length >= count) break;
+            let posterUrl = e.posterUrl || null;
+            if (!posterUrl) {
+                try {
+                    const posterPath = await posterPromiseFor(e.fileName).promise;
+                    posterUrl = posterImageUrl(posterPath, 'w154');
+                } catch (err2) {
+                    posterUrl = null;
+                }
+            }
+            if (posterUrl) covers.push({ fileName: e.fileName, posterUrl, timestamp: e.timestamp });
+        }
+
+        res.json({ covers });
+    });
+});
+
 // -------------------------------------------------------------------------
 // IP-Filter: nur Zugriffe aus dem eigenen Intranet (192.168.178.x) sowie
 // vom Server selbst (localhost) erlauben.
@@ -424,6 +503,11 @@ app.use(express.static(__dirname));
 
 const nzbXmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
+// Erkennt Subject-Zeilen von Video-Dateien innerhalb einer NZB – deren
+// Release-Name ist die zuverlässigste Grundlage für die Titel/Jahr-Erkennung
+// (siehe extractTitleYear()), zuverlässiger als z.B. ein .par2-Eintrag.
+const VIDEO_SUBJECT_RE = /\.(mkv|mp4|avi|ts|m2ts|m4v|wmv|mov)[\s"]/i;
+
 function parseNzb(xmlContent) {
     const doc = nzbXmlParser.parse(xmlContent);
     const nzb = doc.nzb;
@@ -435,9 +519,17 @@ function parseNzb(xmlContent) {
     let totalSizeBytes = 0;
     const groupsSet = new Set();
     let poster = null;
+    let releaseSubject = null;
+    let fallbackSubject = null;
 
     files.forEach((f) => {
         if (poster === null && f['@_poster']) poster = f['@_poster'];
+
+        const subject = f['@_subject'];
+        if (subject) {
+            if (fallbackSubject === null) fallbackSubject = subject;
+            if (releaseSubject === null && VIDEO_SUBJECT_RE.test(subject)) releaseSubject = subject;
+        }
 
         const segRaw = f.segments && f.segments.segment;
         if (segRaw) {
@@ -460,7 +552,162 @@ function parseNzb(xmlContent) {
         totalSizeBytes,
         groups: Array.from(groupsSet),
         poster,
+        // Für die Titel/Jahr-Erkennung (Filmcover): bevorzugt das Subject
+        // einer Video-Datei, sonst das erste verfügbare Subject.
+        releaseSubject: releaseSubject || fallbackSubject,
     };
+}
+
+// -------------------------------------------------------------------------
+// Filmcover (TMDB): Titel/Jahr aus einem Release-Namen erkennen, dazu passendes
+// Poster bei The Movie Database suchen und als kleines Thumbnail anbieten.
+// Komplett optional – ohne hinterlegten API-Key (config.tmdbApiKey) passiert
+// hier gar nichts.
+// -------------------------------------------------------------------------
+
+// Typische Video-/Repair-Dateiendungen sowie Restzähler wie " (1/50)" oder
+// führende "[12/34] - " / Anführungszeichen aus rohen Subject-/Dateinamen
+// entfernen, bevor der eigentliche Release-Name übrig bleibt.
+function extractTitleYear(rawName) {
+    if (!rawName) return null;
+    let name = String(rawName).trim();
+
+    // Führendes "[12/34] - " (klassisches Subject-Präfix mancher Indexer).
+    name = name.replace(/^\[\d+\/\d+\]\s*-\s*/, '');
+
+    // Falls der Name in Anführungszeichen steht, nur den Inhalt nehmen.
+    const quoted = name.match(/"([^"]+)"/);
+    if (quoted) name = quoted[1];
+
+    // Abschließenden Segmentzähler wie " (1/50)" entfernen.
+    name = name.replace(/\s*\(\d+\/\d+\)\s*$/, '');
+
+    // Bekannte Datei-/Repair-Endungen (inkl. mehrteiliger .volXXX+YYY.par2).
+    name = name.replace(/\.vol\d+\+\d+\.par2$/i, '');
+    name = name.replace(/\.(mkv|mp4|avi|ts|m2ts|m4v|wmv|mov|par2|nfo|rar|nzb|r\d{2,3}|\d{3})$/i, '');
+
+    // Punkte/Unterstriche als Worttrenner behandeln.
+    const normalized = name.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!normalized) return null;
+
+    const yearMatch = normalized.match(/\b(19\d{2}|20\d{2})\b/);
+    if (!yearMatch) return null;
+
+    const title = normalized.slice(0, yearMatch.index).trim();
+    if (!title) return null;
+
+    return { title, year: yearMatch[1] };
+}
+
+// TMDB gibt zwei verschiedene Schlüsseltypen aus, und die eigene Weboberfläche
+// von TMDB bewirbt inzwischen bevorzugt den v4-Token – es ist also sehr
+// wahrscheinlich, dass genau der (statt des kurzen v3-Keys) eingetragen wird:
+//   - "API-Schlüssel (v3 auth)": kurzer 32-stelliger Hex-String, wird als
+//     Query-Parameter "api_key=..." mitgeschickt.
+//   - "API-Lesezugriffstoken (v4 auth)": langer JWT-artiger String (enthält
+//     Punkte, i.d.R. weit über 40 Zeichen), muss als
+//     "Authorization: Bearer <token>"-Header gesendet werden – als
+//     api_key-Query-Parameter schlägt er mit HTTP 401 fehl.
+// Damit beide Varianten ohne Rückfrage funktionieren, wird anhand der Form
+// des gespeicherten Schlüssels automatisch der passende Auth-Modus gewählt.
+function isTmdbV4Token(key) {
+    return typeof key === 'string' && (key.length > 40 || key.includes('.'));
+}
+
+function tmdbSearchMoviePoster(title, year) {
+    return new Promise((resolve) => {
+        if (!config.tmdbApiKey) return resolve(null);
+
+        const v4 = isTmdbV4Token(config.tmdbApiKey);
+        const params = new URLSearchParams({
+            query: title,
+            language: 'de-DE',
+        });
+        if (!v4) params.set('api_key', config.tmdbApiKey);
+        if (year) params.set('year', year);
+
+        let settled = false;
+        const safeResolve = (val) => { if (!settled) { settled = true; resolve(val); } };
+
+        const url = `https://api.themoviedb.org/3/search/movie?${params.toString()}`;
+        const options = { timeout: 6000 };
+        if (v4) options.headers = { Authorization: `Bearer ${config.tmdbApiKey}`, Accept: 'application/json' };
+
+        const req = https.get(url, options, (res) => {
+            let raw = '';
+            res.on('data', (chunk) => { raw += chunk; });
+            res.on('end', () => {
+                if (res.statusCode !== 200) {
+                    let detail = '';
+                    try { detail = JSON.parse(raw).status_message || ''; } catch (err) { /* egal */ }
+                    logEvent(`TMDB-Suche fehlgeschlagen (HTTP ${res.statusCode}${detail ? `: ${detail}` : ''}) für "${title}"${res.statusCode === 401 ? ' – TMDB API-Key prüfen (v3-Key statt v4-Lesezugriffstoken erforderlich, oder umgekehrt)' : ''}.`);
+                    return safeResolve(null);
+                }
+                try {
+                    const data = JSON.parse(raw);
+                    const hit = data.results && data.results[0];
+                    safeResolve(hit && hit.poster_path ? hit.poster_path : null);
+                } catch (err) {
+                    logEvent(`TMDB-Antwort konnte nicht gelesen werden: ${err.message}`);
+                    safeResolve(null);
+                }
+            });
+        });
+        req.on('timeout', () => { req.destroy(); logEvent(`TMDB-Suche für "${title}" hat das Zeitlimit überschritten.`); safeResolve(null); });
+        req.on('error', (err) => { logEvent(`TMDB-Suche für "${title}" fehlgeschlagen: ${err.message}`); safeResolve(null); });
+    });
+}
+
+// Cache: "titel|jahr" -> { posterPath, ts, pending }. posterPath ist auch bei
+// einem Nicht-Treffer gecacht (als null), damit dieselbe Anfrage nicht bei
+// jedem Poll erneut an TMDB geschickt wird. Echte Treffer werden 24h lang
+// gecacht, Nicht-Treffer/Fehler dagegen nur kurz – sonst würde z.B. ein
+// falsch konfigurierter API-Key erst nach einem Tag erneut versucht.
+const posterCache = new Map();
+const POSTER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const POSTER_NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function posterImageUrl(posterPath, size) {
+    return posterPath ? `https://image.tmdb.org/t/p/${size}${posterPath}` : null;
+}
+
+// Zentrale Cache-Logik: liefert sowohl den SOFORT verfügbaren (evtl. noch
+// nicht ermittelten) Poster-Pfad als auch ein Promise, das auflöst sobald
+// die TMDB-Suche fertig ist. Parallele Anfragen für denselben Titel teilen
+// sich dieselbe laufende Anfrage (kein doppelter TMDB-Call).
+function posterPromiseFor(releaseName) {
+    if (!config.tmdbApiKey) return { immediate: null, promise: Promise.resolve(null) };
+    const ty = extractTitleYear(releaseName);
+    if (!ty) return { immediate: null, promise: Promise.resolve(null) };
+
+    const key = `${ty.title.toLowerCase()}|${ty.year}`;
+    const cached = posterCache.get(key);
+
+    if (cached && !cached.pending) {
+        const ttl = cached.posterPath ? POSTER_CACHE_TTL_MS : POSTER_NEGATIVE_CACHE_TTL_MS;
+        if ((Date.now() - cached.ts) < ttl) {
+            return { immediate: cached.posterPath, promise: Promise.resolve(cached.posterPath) };
+        }
+    }
+    if (cached && cached.pending) {
+        return { immediate: cached.posterPath, promise: cached.promise || Promise.resolve(cached.posterPath) };
+    }
+
+    const promise = tmdbSearchMoviePoster(ty.title, ty.year)
+        .then((posterPath) => { posterCache.set(key, { posterPath, ts: Date.now(), pending: false }); return posterPath; })
+        .catch(() => { posterCache.set(key, { posterPath: null, ts: Date.now(), pending: false }); return null; });
+    posterCache.set(key, { posterPath: cached ? cached.posterPath : null, ts: cached ? cached.ts : 0, pending: true, promise });
+
+    return { immediate: cached ? cached.posterPath : null, promise };
+}
+
+// Liefert SOFORT den zwischengespeicherten Poster-Pfad (oder null), ohne je
+// auf TMDB zu warten – wichtig, da diese Funktion aus dem alle paar Sekunden
+// gepollten /api/nzbget-queue-Endpunkt aufgerufen wird. Bei einem neuen bzw.
+// abgelaufenen Cache-Eintrag wird im Hintergrund eine TMDB-Suche angestoßen;
+// das Ergebnis steht dann erst beim übernächsten Poll zur Verfügung.
+function posterPathFor(releaseName) {
+    return posterPromiseFor(releaseName).immediate;
 }
 
 function buildNzbStatusPayload() {
@@ -476,6 +723,18 @@ function buildNzbStatusPayload() {
         receivedAt: currentNzbInfo.receivedAt,
         nzbget: nzbgetStatus,
         nzbgetReachable,
+        // Ein Eintrag pro in dieser Charge gebeamter Datei, mit ihrem
+        // jeweils eigenen Status (aktiv/wartet/fertig) – damit das Frontend
+        // bei mehreren gleichzeitig gebeamten Dateien nicht nur die eine
+        // "aktuelle" NZB zeigen kann, sondern die ganze Warteschlange der
+        // eigenen Charge.
+        batch: nzbBatch.map((it) => ({
+            fileName: it.fileName,
+            totalSizeGb: bytesToGb(it.totalSizeBytes),
+            fileCount: it.fileCount,
+            receivedAt: it.receivedAt,
+            nzbget: it.nzbget || { phase: 'unknown' },
+        })),
     };
 }
 
@@ -562,6 +821,7 @@ function groupProgress(group) {
         : Math.max(0, totalMB - remainingMB);
 
     return {
+        id: group.NZBID,
         status: group.Status,
         totalMB: round1(totalMB),
         downloadedMB: round1(downloadedMB),
@@ -652,7 +912,16 @@ async function updateNzbgetStatus() {
             item.nzbget = computeStatusForItem(item, groups, history);
 
             if (item.nzbget.phase === 'done') {
+                const justFinished = !item.deleted;
                 deleteProcessedNzbFile(item);
+                if (justFinished) {
+                    // Diese Datei ist gerade fertig heruntergeladen worden –
+                    // jetzt (statt erst beim nächsten Zeitintervall) alle
+                    // Verzeichnisse auf verschiebbare Ordner/Dateien prüfen.
+                    // Deckt sowohl "eine einzelne Datei fertig" als auch
+                    // "die letzte Datei der Warteschlange fertig" ab.
+                    runAutoMove();
+                }
             }
             if (item.nzbget.phase === 'active' && !activeItem) {
                 activeItem = item;
@@ -777,6 +1046,7 @@ app.get('/api/nzbget-queue', async (req, res) => {
         const activeGroup = allGroups.find((g) => isActivelyDownloading(g));
         const active = activeGroup ? {
             name: activeGroup.NZBName || activeGroup.NZBFilename || 'unbekannt',
+            posterUrl: posterImageUrl(posterPathFor(activeGroup.NZBName || activeGroup.NZBFilename), 'w154'),
             ...groupProgress(activeGroup),
         } : null;
 
@@ -785,12 +1055,85 @@ app.get('/api/nzbget-queue', async (req, res) => {
         const items = allGroups
             .filter((g) => !isActivelyDownloading(g))
             .map((g) => ({
+                id: g.NZBID,
                 name: g.NZBName || g.NZBFilename || 'unbekannt',
                 sizeMB: round1(g.FileSizeMB || 0),
+                posterUrl: posterImageUrl(posterPathFor(g.NZBName || g.NZBFilename), 'w92'),
             }));
-        res.json({ active, items, reachable: true });
+
+        // Über dieses Tool gebeamte Dateien, die noch nicht abgeschlossen
+        // ("done") und noch nicht aktiv am Herunterladen sind (z.B. weil
+        // NZBGet sie gerade erst aus dem Watch-Ordner einliest) – damit im
+        // Status sichtbar bleibt, dass gerade etwas "verarbeitet" wird, bis
+        // der eigentliche Download beginnt (dann übernimmt "active" oben).
+        // Nutzt den von updateNzbgetStatus() ohnehin gepflegten Status je
+        // Batch-Eintrag, statt NZBGet ein zweites Mal separat abzufragen.
+        const processing = nzbBatch
+            .filter((it) => {
+                const phase = it.nzbget && it.nzbget.phase;
+                if (phase === 'done') return false;
+                if (phase === 'active' && it.nzbget.status === 'DOWNLOADING') return false;
+                return true;
+            })
+            .map((it) => ({
+                // Erst sobald NZBGet die Datei eingelesen hat, gibt es eine
+                // NZBID zum Abbrechen – vorher (phase "unknown") ist id null
+                // und der Stop-Button im Frontend entsprechend deaktiviert.
+                id: (it.nzbget && it.nzbget.id) || null,
+                name: it.fileName,
+                // releaseSubject (aus der NZB selbst) ist zuverlässiger für die
+                // Titel-Erkennung als der hochgeladene Dateiname.
+                posterUrl: posterImageUrl(posterPathFor(it.releaseSubject || it.fileName), 'w154'),
+            }));
+
+        res.json({ active, items, processing, reachable: true });
     } catch (err) {
-        res.json({ active: null, items: [], reachable: false, error: err.message });
+        res.json({ active: null, items: [], processing: [], reachable: false, error: err.message });
+    }
+});
+
+// -------------------------------------------------------------------------
+// Downloads abbrechen: einzelnen Eintrag oder die komplette Warteschlange
+// (inkl. aktivem Download) löschen. Nutzt NZBGets editqueue/"GroupDelete",
+// das sowohl aktive als auch wartende Einträge aus der Queue entfernt.
+// -------------------------------------------------------------------------
+
+app.post('/api/nzbget-cancel', async (req, res) => {
+    const id = req.body && req.body.id;
+    if (!id) {
+        return res.status(400).json({ error: 'Keine NZBID angegeben.' });
+    }
+    try {
+        await nzbgetCall('editqueue', ['GroupDelete', 0, '', [id]]);
+        logEvent(`Download abgebrochen (NZBID ${id}).`);
+        setTimeout(updateNzbgetStatus, 1500);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/nzbget-cancel-all', async (req, res) => {
+    try {
+        const groups = await nzbgetCall('listgroups', [0]);
+        const ids = (groups || []).map((g) => g.NZBID).filter((id) => id != null);
+
+        if (ids.length) {
+            await nzbgetCall('editqueue', ['GroupDelete', 0, '', ids]);
+        }
+
+        // Eigene Anzeige ebenfalls sofort zurücksetzen, statt auf den
+        // nächsten Poll zu warten (der ohnehin dasselbe feststellen würde).
+        nzbBatch = [];
+        currentNzbInfo = null;
+        nzbgetStatus = null;
+        publishNzbInfo();
+
+        logEvent(`Alle Downloads abgebrochen (${ids.length} Eintrag/Einträge, inkl. Warteschlange).`);
+        setTimeout(updateNzbgetStatus, 1500);
+        res.json({ ok: true, count: ids.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -820,6 +1163,7 @@ app.post('/upload', (req, res) => {
             fileCount: parsed.fileCount,
             groups: parsed.groups,
             poster: parsed.poster,
+            releaseSubject: parsed.releaseSubject,
             receivedAt: Date.now(),
             nzbget: null,
             deleted: false,
@@ -834,7 +1178,14 @@ app.post('/upload', (req, res) => {
 
         logEvent(`NZB ausgewertet: ${file.name} – ${parsed.fileCount} Datei(en), ${bytesToGb(parsed.totalSizeBytes)} GB`);
         publishNzbInfo();
-        logAction({
+        // Protokoll-Eintrag wird SOFORT geschrieben (nicht erst nach der
+        // TMDB-Antwort) – sonst fehlt ein gerade gebeamter Upload für ein
+        // paar Sekunden im "Zuletzt heruntergeladen"-Streifen und im
+        // Protokoll. Das Poster wird, sobald TMDB geantwortet hat, per
+        // patchActionLogPoster() nachträglich in genau diesen Eintrag
+        // eingetragen; bis dahin greift bei Bedarf die Live-Nachladung in
+        // /api/recent-covers.
+        const beamedRecord = logAction({
             action: 'nzb_beamed',
             ip: lastClientIp,
             fileName: file.name,
@@ -842,7 +1193,12 @@ app.post('/upload', (req, res) => {
             totalSizeGb: bytesToGb(parsed.totalSizeBytes),
             fileCount: parsed.fileCount,
             groups: parsed.groups,
+            posterUrl: null,
         });
+        posterPromiseFor(parsed.releaseSubject || file.name).promise.then((posterPath) => {
+            const posterUrl = posterImageUrl(posterPath, 'w154');
+            if (posterUrl) patchActionLogPoster(beamedRecord.timestamp, file.name, posterUrl);
+        }).catch(() => {});
         nzbgetStatus = null;
         // NZBGet braucht nach dem Speichern der Datei im Watch-Ordner einen
         // Moment, um sie einzulesen – daher mit kurzer Verzögerung prüfen.
@@ -934,12 +1290,13 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
     const { section, category, path: dirPath } = req.body || {};
 
-    if (!['source', 'target'].includes(section) || !getCategoryKeys().includes(category) || !dirPath) {
+    if (!['source', 'target', 'target2'].includes(section) || !getCategoryKeys().includes(category) || !dirPath) {
         return res.status(400).json({ error: 'Ungültige Anfrage: section (source/target), category (filme/serien/musik) und path erforderlich.' });
     }
 
     if (section === 'source') config.sources[category] = dirPath;
     if (section === 'target') config.targets[category] = dirPath;
+    if (section === 'target2') config.altTargets[category] = dirPath;
 
     saveConfig(config);
     publishOverview();
@@ -949,12 +1306,13 @@ app.post('/api/config', (req, res) => {
 app.post('/api/config/clear', (req, res) => {
     const { section, category } = req.body || {};
 
-    if (!['source', 'target'].includes(section) || !getCategoryKeys().includes(category)) {
+    if (!['source', 'target', 'target2'].includes(section) || !getCategoryKeys().includes(category)) {
         return res.status(400).json({ error: 'Ungültige Anfrage: section (source/target) und category (filme/serien/musik) erforderlich.' });
     }
 
     if (section === 'source') config.sources[category] = null;
     if (section === 'target') config.targets[category] = null;
+    if (section === 'target2') config.altTargets[category] = null;
 
     saveConfig(config);
     publishOverview();
@@ -1025,6 +1383,25 @@ app.post('/api/network-ranges/reset', (req, res) => {
     saveConfig(config);
     logEvent(`Erlaubte IP-Bereiche auf Standard zurückgesetzt: ${config.networkRanges.join(', ')}`);
     res.json({ ranges: config.networkRanges });
+});
+
+// -------------------------------------------------------------------------
+// TMDB-API-Key für Filmcover (Einstellungen-Modal).
+// -------------------------------------------------------------------------
+
+app.get('/api/tmdb-key', (req, res) => {
+    res.json({ key: config.tmdbApiKey || '' });
+});
+
+app.post('/api/tmdb-key', (req, res) => {
+    const key = (req.body && typeof req.body.key === 'string') ? req.body.key.trim() : '';
+    config.tmdbApiKey = key;
+    saveConfig(config);
+    // Cache leeren, damit ein neu eingegebener Key sofort greift (bzw. ein
+    // entfernter Key nicht versehentlich alte Treffer weiterzeigt).
+    posterCache.clear();
+    logEvent(key ? 'TMDB API-Key gespeichert – Filmcover aktiviert.' : 'TMDB API-Key entfernt – Filmcover deaktiviert.');
+    res.json({ key: config.tmdbApiKey });
 });
 
 // -------------------------------------------------------------------------
@@ -1102,11 +1479,12 @@ function listDirFiles(dirPath) {
 }
 
 app.get('/api/overview', (req, res) => {
-    const overview = { sources: {}, targets: {} };
+    const overview = { sources: {}, targets: {}, altTargets: {} };
 
     getCategoryKeys().forEach((c) => {
         overview.sources[c] = { dir: config.sources[c], ...listDirFiles(config.sources[c]) };
         overview.targets[c] = { dir: config.targets[c], ...listDirFiles(config.targets[c]) };
+        overview.altTargets[c] = { dir: config.altTargets[c], ...listDirFiles(config.altTargets[c]) };
     });
 
     res.json(overview);
@@ -1141,8 +1519,12 @@ app.get('/api/empty-dirs', (req, res) => {
     // Über ALLE definierten Zielverzeichnisse gehen – nicht nur die
     // aktuell bekannten Kategorien, sondern jeden Eintrag in
     // config.targets, der einen Pfad gesetzt hat.
+    const allTargets = [];
     Object.keys(config.targets).forEach((cat) => {
-        const targetDir = config.targets[cat];
+        allTargets.push([cat, config.targets[cat]]);
+        if (config.altTargets && config.altTargets[cat]) allTargets.push([cat, config.altTargets[cat]]);
+    });
+    allTargets.forEach(([cat, targetDir]) => {
         if (!targetDir || !fs.existsSync(targetDir)) return;
         let entries;
         try {
@@ -1165,7 +1547,7 @@ app.post('/api/empty-dirs/delete', (req, res) => {
 
     // Sicherheit: nur Pfade löschen, die tatsächlich unterhalb eines
     // konfigurierten Zielverzeichnisses liegen.
-    const targetRoots = Object.values(config.targets).filter(Boolean).map((d) => path.resolve(d));
+    const targetRoots = Object.values(config.targets).concat(Object.values(config.altTargets || {})).filter(Boolean).map((d) => path.resolve(d));
 
     const deleted = [];
     const failed = [];
@@ -1242,6 +1624,69 @@ async function moveOneItem(srcFull, destDir, isDir) {
     return destPath;
 }
 
+// Laufwerk (Root) eines Pfads, z.B. "d:\" – dient zur Erkennung, ob ein
+// Verschieben nur umbenennt (gleiches Laufwerk, kein Zusatzplatz nötig) oder
+// kopieren muss (anderes Laufwerk, Platz im Ziel nötig).
+function driveRootOf(p) {
+    return path.parse(path.resolve(p)).root.toLowerCase();
+}
+
+// Gesamtgröße eines Elements (Datei oder Ordner rekursiv) in Bytes.
+async function itemSizeBytes(fullPath) {
+    let st;
+    try {
+        st = await fsp.lstat(fullPath);
+    } catch (e) {
+        return 0;
+    }
+    if (!st.isDirectory()) return st.size;
+    let total = 0;
+    let children = [];
+    try {
+        children = await fsp.readdir(fullPath);
+    } catch (e) {
+        return 0;
+    }
+    for (const child of children) {
+        total += await itemSizeBytes(path.join(fullPath, child));
+    }
+    return total;
+}
+
+// Prüft vor dem Verschieben, ob im Zielverzeichnis genug freier Speicher
+// vorhanden ist. Nur nötig, wenn Quelle und Ziel auf verschiedenen Laufwerken
+// liegen (dann wird kopiert + gelöscht). Liefert { ok, message }.
+async function checkFreeSpaceForMove(sourceDir, targetDir, entries) {
+    if (driveRootOf(sourceDir) === driveRootOf(targetDir)) {
+        return { ok: true, message: null };
+    }
+    let needed = 0;
+    for (const entry of entries) {
+        needed += await itemSizeBytes(path.join(sourceDir, entry.name));
+    }
+    if (needed === 0) return { ok: true, message: null };
+
+    let free;
+    try {
+        const st = await fsp.statfs(targetDir);
+        free = Number(st.bavail) * Number(st.bsize);
+    } catch (err) {
+        return {
+            ok: false,
+            message: `Freier Speicher im Zielverzeichnis konnte nicht geprüft werden (${err.message}).`,
+        };
+    }
+
+    const safetyMargin = 512 * 1024 * 1024; // 0,5 GB Reserve
+    if (free < needed + safetyMargin) {
+        return {
+            ok: false,
+            message: `Nicht genug Speicherplatz im Ziel ${targetDir}: benötigt ${bytesToGb(needed)} GB (plus Reserve), frei ${bytesToGb(free)} GB.`,
+        };
+    }
+    return { ok: true, message: null };
+}
+
 // Führt den kompletten Verschiebe-Lauf aus und meldet jeden Schritt über
 // onProgress (für die Live-Anzeige im Browser bzw. Konsolen-Logging).
 async function performMoveAll(onProgress) {
@@ -1250,7 +1695,9 @@ async function performMoveAll(onProgress) {
 
     for (const category of getCategoryKeys()) {
         const sourceDir = config.sources[category];
-        const targetDir = config.targets[category];
+        let targetDir = config.targets[category];
+        const altTargetDir = config.altTargets ? config.altTargets[category] : null;
+        let switchNotice = null;
 
         if (!sourceDir || !targetDir) {
             results.push({ category, status: 'skipped', reason: 'Quell- oder Zielverzeichnis nicht gesetzt', moved: 0 });
@@ -1288,6 +1735,39 @@ async function performMoveAll(onProgress) {
             continue;
         }
 
+        if (entries.length > 0) {
+            notify({ category, item: null, status: 'category-start', message: `Prüfe Speicherplatz für ${categoryLabel(category)}…` });
+            const space = await checkFreeSpaceForMove(sourceDir, targetDir, entries);
+            if (!space.ok) {
+                let resolved = false;
+                let failMsg = space.message;
+                if (altTargetDir) {
+                    try {
+                        if (!fs.existsSync(altTargetDir)) fs.mkdirSync(altTargetDir, { recursive: true });
+                        const altSpace = await checkFreeSpaceForMove(sourceDir, altTargetDir, entries);
+                        if (altSpace.ok) {
+                            switchNotice = `Speicherplatz knapp: ${space.message} Es wurde auf das zweite Zielverzeichnis ${altTargetDir} gewechselt.`;
+                            targetDir = altTargetDir;
+                            resolved = true;
+                        } else {
+                            failMsg = `${space.message} Auch das zweite Ziel reicht nicht: ${altSpace.message}`;
+                        }
+                    } catch (err) {
+                        failMsg = `${space.message} Zweites Ziel nicht nutzbar: ${err.message}`;
+                    }
+                }
+                if (!resolved) {
+                    failMsg += ' Verschieben nicht durchgeführt.';
+                    results.push({ category, status: 'error', reason: failMsg, moved: 0 });
+                    notify({ category, item: null, status: 'error', message: failMsg });
+                    logEvent(`${categoryLabel(category)}: ${failMsg}`);
+                    continue;
+                }
+                notify({ category, item: null, status: 'category-start', message: switchNotice });
+                logEvent(`${categoryLabel(category)}: ${switchNotice}`);
+            }
+        }
+
         let moved = 0;
         let failed = 0;
         let lastError = null;
@@ -1310,11 +1790,11 @@ async function performMoveAll(onProgress) {
         }
 
         if (failed > 0) {
-            results.push({ category, status: 'partial', reason: `${failed} Element(e) fehlgeschlagen (${lastError})`, moved });
+            results.push({ category, status: 'partial', reason: `${failed} Element(e) fehlgeschlagen (${lastError})`, notice: switchNotice, moved });
         } else if (moved === 0) {
             results.push({ category, status: 'empty', reason: 'Keine Ordner/Dateien im Quellverzeichnis gefunden', moved: 0 });
         } else {
-            results.push({ category, status: 'ok', reason: null, moved });
+            results.push({ category, status: 'ok', reason: null, notice: switchNotice, moved });
         }
 
         notify({ category, item: null, status: 'category-done', message: `${categoryLabel(category)}: ${moved} verschoben${failed ? `, ${failed} fehlgeschlagen` : ''}.` });
@@ -1581,13 +2061,14 @@ function publishMoveResult(results) {
 setInterval(publishOverview, 30000);
 
 // -------------------------------------------------------------------------
-// Automatischer Verschiebe-Lauf: prüft die Quellverzeichnisse in
-// regelmäßigen Abständen und verschiebt gefundene Ordner (komplett) bzw.
-// lose Dateien ins jeweilige Zielverzeichnis. Keine rekursive Datei-Suche
-// nötig, da ganze Ordner als Einheit verschoben werden.
+// Automatischer Verschiebe-Lauf: prüft die Quellverzeichnisse und verschiebt
+// gefundene Ordner (komplett) bzw. lose Dateien ins jeweilige Zielverzeichnis.
+// Keine rekursive Datei-Suche nötig, da ganze Ordner als Einheit verschoben
+// werden. Kein Dauer-Polling mehr: der Lauf wird gezielt angestoßen, sobald
+// der Download einer einzelnen Datei (oder der ganzen Warteschlange) fertig
+// ist (siehe updateNzbgetStatus()), plus einmal kurz nach dem Serverstart.
 // -------------------------------------------------------------------------
 
-const AUTO_MOVE_INTERVAL_MS = 5 * 60 * 1000; // 5 Minuten – bei Bedarf anpassen
 let autoMoveRunning = false;
 
 // Führt einen kompletten Verschiebe-Lauf aus und aktualisiert den geteilten
@@ -1630,11 +2111,10 @@ async function runAutoMove() {
     }
 }
 
-setTimeout(runAutoMove, 15000); // kurz nach dem Start einmal laufen lassen
-setInterval(runAutoMove, AUTO_MOVE_INTERVAL_MS);
+setTimeout(runAutoMove, 15000); // kurz nach dem Start einmal laufen lassen (z.B. für bereits vorhandene Dateien)
 
 // -------------------------------------------------------------------------
-// Hardware-Überwachung: CPU, Speicher, Laufwerke, Netzwerk, Temperatur
+// Hardware-Überwachung: CPU, Speicher, Laufwerke, Netzwerk
 // -------------------------------------------------------------------------
 
 function round1(n) {
@@ -1651,13 +2131,12 @@ function sanitizeId(str) {
 
 async function updateHardwareInfo() {
     try {
-        const [cpuInfo, cpuLoad, mem, fsSize, netStats, temp, timeInfo] = await Promise.all([
+        const [cpuInfo, cpuLoad, mem, fsSize, netStats, timeInfo] = await Promise.all([
             si.cpu(),
             si.currentLoad(),
             si.mem(),
             si.fsSize(),
             si.networkStats(),
-            si.cpuTemperature(),
             si.time(),
         ]);
 
@@ -1679,8 +2158,6 @@ async function updateHardwareInfo() {
             acc.txBytes += n.tx_bytes || 0;
             return acc;
         }, { rx: 0, tx: 0, rxBytes: 0, txBytes: 0 });
-
-        const mainTemp = (temp && typeof temp.main === 'number' && temp.main > 0) ? round1(temp.main) : null;
 
         hardwareSnapshot = {
             cpu: {
@@ -1708,7 +2185,6 @@ async function updateHardwareInfo() {
                 totalRxGb: bytesToGb(netAgg.rxBytes),
                 totalTxGb: bytesToGb(netAgg.txBytes),
             },
-            temperature: { cpuC: mainTemp },
             uptimeSeconds: Math.round(timeInfo.uptime),
             appUptimeSeconds: Math.round(process.uptime()),
             updatedAt: Date.now(),
@@ -1771,15 +2247,6 @@ function publishHardwareDiscovery() {
         state_topic: `${MQTT_BASE}/hardware/disk_io/write`,
         unit_of_measurement: 'kB/s',
         icon: 'mdi:file-upload-outline',
-    });
-
-    publishDiscoveryEntity('sensor', 'cpu_temp', {
-        name: 'CPU-Temperatur',
-        unique_id: `${DEVICE_ID}_cpu_temp`,
-        state_topic: `${MQTT_BASE}/hardware/temperature/cpu`,
-        unit_of_measurement: '°C',
-        device_class: 'temperature',
-        icon: 'mdi:thermometer',
     });
 
     publishDiscoveryEntity('sensor', 'uptime', {
@@ -1922,10 +2389,6 @@ function publishHardware() {
 
     mqttClient.publish(`${MQTT_BASE}/hardware/disk_io/read`, String(hardwareSnapshot.diskIO.readKBs), { retain: true });
     mqttClient.publish(`${MQTT_BASE}/hardware/disk_io/write`, String(hardwareSnapshot.diskIO.writeKBs), { retain: true });
-
-    if (hardwareSnapshot.temperature.cpuC !== null) {
-        mqttClient.publish(`${MQTT_BASE}/hardware/temperature/cpu`, String(hardwareSnapshot.temperature.cpuC), { retain: true });
-    }
 
     mqttClient.publish(`${MQTT_BASE}/hardware/uptime`, String(hardwareSnapshot.uptimeSeconds), { retain: true });
     mqttClient.publish(`${MQTT_BASE}/hardware/app_uptime`, String(hardwareSnapshot.appUptimeSeconds), { retain: true });

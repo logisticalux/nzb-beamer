@@ -4,14 +4,196 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NZB Beamer</title>
+    <script>
+        // Gespeicherte Theme-Wahl so früh wie möglich anwenden, damit die
+        // Seite nicht erst dunkel aufblitzt und dann auf Hell umschaltet.
+        // Kein gespeicherter Wert = automatisch (folgt der Systemvorgabe
+        // über die CSS-Media-Query, hier passiert dann nichts).
+        (function () {
+            try {
+                const saved = localStorage.getItem('nzbBeamerTheme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.setAttribute('data-theme', saved);
+                }
+            } catch (err) { /* localStorage evtl. nicht verfügbar */ }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        /* -------------------------------------------------------------
+           Theme: Dark (Standard) / Light, umschaltbar über den Button
+           neben dem Settings-Icon, mit automatischer Anpassung an die
+           Systemeinstellung, solange keine manuelle Wahl gespeichert ist.
+           Kopf-/Terminal-Bereich ("DOS-Box") bleiben bewusst immer dunkel
+           (eigenständiges, feststehendes Design), der Rest der Oberfläche
+           reagiert auf das Theme.
+           ------------------------------------------------------------- */
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --surface-alt: #1c1c1c;
+            --surface-raised: #2a2a2a;
+            --surface-sunken: #161616;
+            --surface-sunken-2: #1a1a1a;
+            --border: #333;
+            --border-soft: #2c2c2c;
+            --border-input: #444;
+            --border-dashed: #555;
+            --text: #e0e0e0;
+            --text-heading: #fff;
+            --text-secondary: #ccc;
+            --text-secondary-2: #ddd;
+            --text-tertiary: #bbb;
+            --text-muted: #aaa;
+            --text-faint: #888;
+            --text-fainter: #777;
+            --text-dim: #999;
+            --text-faintest: #666;
+            --text-ghost: #6b6b6b;
+            --accent: #0088cc;
+            --accent-bright: #00ccff;
+            --accent-hover: #006699;
+            --accent-soft-bg: #17323f;
+            --success: #4caf50;
+            --success-border: #2e4d38;
+            --success-bg: #1a231e;
+            --success-soft-text: #8fbf9a;
+            --danger: #f44336;
+            --danger-border: #4d2e2e;
+            --danger-bg: #2a1818;
+            --danger-btn-bg: #3a1e1e;
+            --danger-btn-border: #5a2e2e;
+            --danger-btn-hover: #4a2424;
+            --queue-active-bg: #161c22;
+            --queue-active-border: #24333d;
+            --shadow: rgba(0,0,0,0.4);
+            --shadow-strong: rgba(0,0,0,0.5);
+            --backdrop: rgba(0,0,0,0.6);
+            --icon-filter: brightness(0) invert(1);
+            --header-grad-1: #1e1e1e;
+            --header-grad-2: #252525;
+            --header-text: #ffffff;
+            --header-svg: #ffffff;
+            --header-btn-bg: rgba(255,255,255,0.08);
+            --header-btn-bg-hover: rgba(255,255,255,0.16);
+            --header-btn-border: rgba(255,255,255,0.15);
+            --terminal-bg: #0c0c0c;
+            --terminal-titlebar-bg: #1a1a1a;
+            --term-warn: #ffbd2e;
+            --term-crit: #ff5f56;
+            color-scheme: dark;
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) { color-scheme: light; }
+            :root:not([data-theme="dark"]):not([data-theme="light"]) {
+                --bg: #f2f3f5;
+                --surface: #ffffff;
+                --surface-alt: #f6f7f9;
+                --surface-raised: #ebedf0;
+                --surface-sunken: #eef0f2;
+                --surface-sunken-2: #e7e9ec;
+                --border: #dbdfe3;
+                --border-soft: #e6e8eb;
+                --border-input: #cfd3d8;
+                --border-dashed: #b9bec5;
+                --text: #23262b;
+                --text-heading: #101215;
+                --text-secondary: #3d4148;
+                --text-secondary-2: #34383e;
+                --text-tertiary: #565b62;
+                --text-muted: #6b7076;
+                --text-faint: #767b82;
+                --text-fainter: #888d93;
+                --text-dim: #9a9fa5;
+                --text-faintest: #9ba0a6;
+                --text-ghost: #9a9fa5;
+                --accent-soft-bg: #dbf0fa;
+                --success-border: #bfe3c4;
+                --success-bg: #eaf7ec;
+                --success-soft-text: #2f7a3d;
+                --danger-border: #f0c6c2;
+                --danger-bg: #fdecea;
+                --danger-btn-bg: #fbe1de;
+                --danger-btn-border: #f0b3ac;
+                --danger-btn-hover: #f6cfc9;
+                --queue-active-bg: #e8f4fb;
+                --queue-active-border: #bfe0f0;
+                --shadow: rgba(20,20,30,0.10);
+                --shadow-strong: rgba(20,20,30,0.16);
+                --backdrop: rgba(20,20,30,0.35);
+                --icon-filter: brightness(0) invert(0.15);
+                --header-grad-1: #ffffff;
+                --header-grad-2: #eef0f3;
+                --header-text: #101215;
+                --header-svg: #23262b;
+                --header-btn-bg: rgba(0,0,0,0.05);
+                --header-btn-bg-hover: rgba(0,0,0,0.10);
+                --header-btn-border: rgba(0,0,0,0.12);
+                --terminal-bg: #ffffff;
+                --terminal-titlebar-bg: #eef0f3;
+                --term-warn: #a66a00;
+                --term-crit: #c62828;
+            }
+        }
+
+        :root[data-theme="light"] {
+            color-scheme: light;
+            --bg: #f2f3f5;
+            --surface: #ffffff;
+            --surface-alt: #f6f7f9;
+            --surface-raised: #ebedf0;
+            --surface-sunken: #eef0f2;
+            --surface-sunken-2: #e7e9ec;
+            --border: #dbdfe3;
+            --border-soft: #e6e8eb;
+            --border-input: #cfd3d8;
+            --border-dashed: #b9bec5;
+            --text: #23262b;
+            --text-heading: #101215;
+            --text-secondary: #3d4148;
+            --text-secondary-2: #34383e;
+            --text-tertiary: #565b62;
+            --text-muted: #6b7076;
+            --text-faint: #767b82;
+            --text-fainter: #888d93;
+            --text-dim: #9a9fa5;
+            --text-faintest: #9ba0a6;
+            --text-ghost: #9a9fa5;
+            --accent-soft-bg: #dbf0fa;
+            --success-border: #bfe3c4;
+            --success-bg: #eaf7ec;
+            --success-soft-text: #2f7a3d;
+            --danger-border: #f0c6c2;
+            --danger-bg: #fdecea;
+            --danger-btn-bg: #fbe1de;
+            --danger-btn-border: #f0b3ac;
+            --danger-btn-hover: #f6cfc9;
+            --queue-active-bg: #e8f4fb;
+            --queue-active-border: #bfe0f0;
+            --shadow: rgba(20,20,30,0.10);
+            --shadow-strong: rgba(20,20,30,0.16);
+            --backdrop: rgba(20,20,30,0.35);
+            --icon-filter: brightness(0) invert(0.15);
+            --header-grad-1: #ffffff;
+            --header-grad-2: #eef0f3;
+            --header-text: #101215;
+            --header-svg: #23262b;
+            --header-btn-bg: rgba(0,0,0,0.05);
+            --header-btn-bg-hover: rgba(0,0,0,0.10);
+            --header-btn-border: rgba(0,0,0,0.12);
+            --terminal-bg: #ffffff;
+            --terminal-titlebar-bg: #eef0f3;
+            --term-warn: #a66a00;
+            --term-crit: #c62828;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
+            background-color: var(--bg);
+            color: var(--text);
             display: flex;
             justify-content: center;
             min-height: 100vh;
@@ -29,11 +211,11 @@
         }
 
         .card {
-            background: #1e1e1e;
+            background: var(--surface);
             border-radius: 14px;
             padding: 14px 18px;
-            border: 1px solid #333;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border);
+            box-shadow: 0 8px 20px var(--shadow);
         }
 
         .header-card {
@@ -41,11 +223,185 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             gap: 6px;
             text-align: center;
-            background: linear-gradient(145deg, #1e1e1e, #252525);
+            background: linear-gradient(145deg, var(--header-grad-1), var(--header-grad-2));
             padding: 14px 16px 10px;
+            min-height: 100px;
             overflow: hidden;
+            transition: background 0.15s ease;
+        }
+
+        /* Wabernde Plasma-Masse: fünf weich verwischte, kräftig bunte
+           Flecken (Cyan, Blau, Violett, Türkis, Magenta-Blau), die schnell
+           und großflächig wandern/rotieren/skalieren – plus ein langsam
+           durchlaufender Hue-Shift über die ganze Masse für zusätzliche
+           Farbdynamik. Der Schriftzug selbst bewegt sich nicht mit. */
+        .plasma-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+            animation: plasmaHue 12s linear infinite;
+        }
+        .plasma-bg span {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(26px);
+            opacity: 0.75;
+            mix-blend-mode: screen;
+        }
+        .plasma-bg span:nth-child(1) {
+            width: 260px;
+            height: 260px;
+            top: -70px;
+            left: 4%;
+            background: radial-gradient(circle, rgba(0, 220, 255, 0.95), rgba(0, 120, 220, 0) 70%);
+            animation: plasmaDrift1 7s ease-in-out infinite;
+        }
+        .plasma-bg span:nth-child(2) {
+            width: 300px;
+            height: 300px;
+            top: 0%;
+            right: -60px;
+            background: radial-gradient(circle, rgba(90, 90, 255, 0.9), rgba(60, 0, 220, 0) 70%);
+            animation: plasmaDrift2 8.5s ease-in-out infinite;
+        }
+        .plasma-bg span:nth-child(3) {
+            width: 240px;
+            height: 240px;
+            bottom: -90px;
+            left: 30%;
+            background: radial-gradient(circle, rgba(0, 255, 220, 0.9), rgba(0, 180, 255, 0) 70%);
+            animation: plasmaDrift3 6.5s ease-in-out infinite;
+        }
+        .plasma-bg span:nth-child(4) {
+            width: 200px;
+            height: 200px;
+            top: 30%;
+            left: 45%;
+            background: radial-gradient(circle, rgba(180, 60, 255, 0.85), rgba(120, 0, 255, 0) 70%);
+            animation: plasmaDrift4 9s ease-in-out infinite;
+        }
+        .plasma-bg span:nth-child(5) {
+            width: 220px;
+            height: 220px;
+            bottom: -40px;
+            right: 10%;
+            background: radial-gradient(circle, rgba(0, 150, 255, 0.9), rgba(0, 220, 255, 0) 70%);
+            animation: plasmaDrift5 7.5s ease-in-out infinite;
+        }
+        @keyframes plasmaDrift1 {
+            0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            25% { transform: translate(60px, 40px) scale(1.35) rotate(20deg); }
+            50% { transform: translate(20px, 70px) scale(0.85) rotate(-15deg); }
+            75% { transform: translate(-40px, 20px) scale(1.15) rotate(10deg); }
+        }
+        @keyframes plasmaDrift2 {
+            0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            25% { transform: translate(-55px, 35px) scale(0.8) rotate(-25deg); }
+            50% { transform: translate(-20px, -50px) scale(1.3) rotate(15deg); }
+            75% { transform: translate(35px, 15px) scale(1.05) rotate(-10deg); }
+        }
+        @keyframes plasmaDrift3 {
+            0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            25% { transform: translate(50px, -45px) scale(1.25) rotate(18deg); }
+            50% { transform: translate(-35px, -20px) scale(0.9) rotate(-20deg); }
+            75% { transform: translate(-55px, 30px) scale(1.1) rotate(12deg); }
+        }
+        @keyframes plasmaDrift4 {
+            0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            25% { transform: translate(-45px, -35px) scale(1.2) rotate(-18deg); }
+            50% { transform: translate(45px, 25px) scale(0.85) rotate(22deg); }
+            75% { transform: translate(15px, -40px) scale(1.1) rotate(-12deg); }
+        }
+        @keyframes plasmaDrift5 {
+            0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            25% { transform: translate(-40px, -25px) scale(0.9) rotate(15deg); }
+            50% { transform: translate(-60px, 20px) scale(1.3) rotate(-18deg); }
+            75% { transform: translate(-10px, 45px) scale(1.05) rotate(10deg); }
+        }
+        @keyframes plasmaHue {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .plasma-bg, .plasma-bg span { animation: none; }
+        }
+
+        /* Gelegentlicher rosa Störschub über der ganzen Box (Fernseher-
+           artiges Rauschen, kurz und ruckartig statt weich eingeblendet –
+           daher "steps(1)"). Läuft fast die ganze Zeit unsichtbar (opacity
+           0) und blitzt nur an zwei kurzen Stellen im Zyklus auf – jetzt
+           kräftiger/deckender als zuvor. */
+        .static-flicker {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+            background:
+                linear-gradient(rgba(255, 20, 147, 0.95), rgba(255, 20, 147, 0.95)),
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+            background-blend-mode: color;
+            background-size: 120px 120px;
+            mix-blend-mode: screen;
+            opacity: 0;
+            animation: staticFlicker 23s steps(1) infinite;
+        }
+        @keyframes staticFlicker {
+            0%, 100% { opacity: 0; }
+            /* Erster, etwas längerer Störschub */
+            41%   { opacity: 0; }
+            41.3% { opacity: 0.8; }
+            41.6% { opacity: 0.25; }
+            41.9% { opacity: 0.9; }
+            42.2% { opacity: 0.35; }
+            42.5% { opacity: 0; }
+            /* Zweiter, kürzerer Schub etwas später im Zyklus */
+            78%   { opacity: 0; }
+            78.2% { opacity: 0.75; }
+            78.4% { opacity: 0.15; }
+            78.6% { opacity: 0.6; }
+            78.8% { opacity: 0; }
+        }
+
+        /* Zusätzliches, klassisches WEISSES Rauschen wie beim alten
+           Fernseher nach Sendeschluss – eigener Zeitversatz im Zyklus,
+           damit sich rosa und weißes Rauschen abwechseln statt gleichzeitig
+           zu laufen. Kein Farbstich, dafür starker Kontrast fürs typische
+           Grieseln. */
+        .static-white {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+            background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+            background-size: 100px 100px;
+            filter: contrast(2.4) brightness(1.4);
+            mix-blend-mode: overlay;
+            opacity: 0;
+            animation: staticFlickerWhite 23s steps(1) infinite;
+        }
+        @keyframes staticFlickerWhite {
+            0%, 100% { opacity: 0; }
+            /* Schub kurz vor dem ersten rosa Schub */
+            14%   { opacity: 0; }
+            14.3% { opacity: 0.85; }
+            14.6% { opacity: 0.3; }
+            14.9% { opacity: 0.9; }
+            15.2% { opacity: 0.2; }
+            15.5% { opacity: 0; }
+            /* Zweiter Schub, versetzt zum rosa Rauschen */
+            60%   { opacity: 0; }
+            60.2% { opacity: 0.75; }
+            60.5% { opacity: 0.2; }
+            60.8% { opacity: 0.7; }
+            61%   { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .static-flicker, .static-white { display: none; }
         }
 
         /* Settings-Button: oben rechts im Header, öffnet das
@@ -57,8 +413,8 @@
             width: 34px;
             height: 34px;
             border-radius: 50%;
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.15);
+            background: var(--header-btn-bg);
+            border: 1px solid var(--header-btn-border);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -67,39 +423,42 @@
             z-index: 2;
             padding: 0;
         }
-        .settings-btn:hover { background: rgba(255,255,255,0.16); }
+        .settings-btn:hover { background: var(--header-btn-bg-hover); }
 
-        /* Logo ganz oben im Header, nimmt 3/4 der Kartenbreite ein. */
-        .beam-banner {
-            width: 75%;
-            max-width: 620px;
-            height: auto;
-            aspect-ratio: 350 / 70;
-            flex-shrink: 0;
-        }
-        .header-text { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .header-text { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-        @keyframes flow { 0% { stroke-dashoffset: 40; } 100% { stroke-dashoffset: 0; } }
-        @keyframes glowPulse { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.3; } }
-        @keyframes glowPulseActive { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-        .data-stream { stroke-dasharray: 6, 6; animation: flow 1s linear infinite; stroke: #ffffff; }
-        .glow-effect { animation: glowPulse 2s ease-in-out infinite; }
-
-        /* Während eines aktiven Downloads: Logo pulsiert schneller/heller
-           und der Datenstrahl bekommt einen leichten blauen Akzent, bleibt
-           aber überwiegend weiß. */
-        .header-card.downloading .data-stream { stroke: #bfe9ff; animation-duration: 0.5s; }
-        .header-card.downloading .glow-effect { animation: glowPulseActive 1s ease-in-out infinite; }
-        .header-card.downloading .nzb-packet-fill { fill: #0088cc; }
-
+        /* Titel: riesiger, statischer Schriftzug ohne Animation, der als
+           Wasserzeichen im Hintergrund der Box liegt – bewusst größer als
+           die Box selbst, das "overflow: hidden" der Karte schneidet ihn
+           sauber ab, sodass man nicht alles sieht, aber erkennt was es
+           heißen soll. "NZB" in Hellblau (Akzentfarbe, in beiden Themes
+           gleich gut lesbar), "BEAMER" in der Theme-Textfarbe des Headers –
+           passt sich also automatisch an Night/Day an (weiß im dunklen,
+           dunkel im hellen Theme). */
         h1 {
+            position: absolute;
+            top: 42%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.1em;
             font-family: 'Poppins', 'Segoe UI', sans-serif;
-            font-weight: 700;
-            font-size: 17px;
-            color: #ffffff;
-            letter-spacing: 0.5px;
+            font-weight: 800;
+            font-size: clamp(44px, 15vw, 150px);
+            letter-spacing: 0px;
+            white-space: nowrap;
+            z-index: 1;
+            pointer-events: none;
+            user-select: none;
         }
+        /* Jedes Wort leicht unabhängig gedreht/verschoben für einen
+           lockeren, dynamischen Effekt – Anfangs-/Endbuchstabe (N von NZB,
+           R von BEAMER) sollen dabei sichtbar, aber nur zu einem kleinen
+           Teil angeschnitten sein. */
+        .beam-title-nzb { display: inline-block; color: var(--accent-bright); transform: rotate(-5deg) translateY(-4%); }
+        .beam-title-beamer { display: inline-block; color: var(--header-text); transform: rotate(4deg) translateY(5%); }
         .subtitle {
             margin-top: 1px;
             font-family: 'Poppins', 'Segoe UI', sans-serif;
@@ -108,14 +467,40 @@
             color: #0088cc;
         }
 
+        /* Icons im Header (Settings-/Theme-Button) passen sich wie alle
+           anderen Icons dem Theme an, da der Header selbst jetzt ebenfalls
+           hell/dunkel umschaltet. */
+        .header-card .icon-mono { filter: var(--icon-filter); }
+
+        /* Theme-Umschalter: gleiche Optik wie der Settings-Button, direkt
+           daneben. Zyklus: Auto (Systemvorgabe) -> Hell -> Dunkel -> Auto. */
+        .theme-toggle-btn {
+            position: absolute;
+            top: 10px;
+            right: 52px;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--header-btn-bg);
+            border: 1px solid var(--header-btn-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            cursor: pointer;
+            z-index: 2;
+            padding: 0;
+        }
+        .theme-toggle-btn:hover { background: var(--header-btn-bg-hover); }
+
         .status-card {
             position: relative;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            background-color: #1a231e;
-            border-color: #2e4d38;
+            background-color: var(--success-bg);
+            border-color: var(--success-border);
             padding: 8px 16px;
             font-size: 13px;
             overflow: hidden;
@@ -124,7 +509,7 @@
         .status-side {
             font-family: monospace;
             font-size: 11px;
-            color: #8fbf9a;
+            color: var(--success-soft-text);
             flex-shrink: 0;
             white-space: nowrap;
         }
@@ -156,9 +541,9 @@
 
         .status-dot {
             width: 10px; height: 10px;
-            background-color: #4caf50;
+            background-color: var(--success);
             border-radius: 50%;
-            box-shadow: 0 0 8px #4caf50;
+            box-shadow: 0 0 8px var(--success);
             animation: statusPulse 2s infinite;
             flex-shrink: 0;
         }
@@ -173,14 +558,25 @@
             margin: 0 0 8px;
             font-size: 12px;
             font-weight: 600;
-            color: #888;
+            color: var(--text-faint);
         }
+        /* Kartentitel mit einer Aktion daneben (z.B. "Alle abbrechen" im
+           NZBGet-Status). */
+        .section-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .section-title-row .section-title { margin: 0; }
+        .section-title-row .btn-secondary { width: auto; font-size: 11px; padding: 5px 9px; }
 
         /* Einfarbige weiße Icons – gilt für dekorative Symbole (keine
            Status-Anzeigen wie den Server-Punkt oder Erfolg/Fehler-Zeichen,
            deren Farbe eine Bedeutung trägt). */
         .icon-mono {
-            filter: brightness(0) invert(1);
+            filter: var(--icon-filter);
             display: inline-block;
         }
 
@@ -194,7 +590,7 @@
         }
         .collapsible-head .section-title { margin: 0; }
         .chevron {
-            color: #666;
+            color: var(--text-faintest);
             font-size: 11px;
             transition: transform 0.2s ease;
         }
@@ -214,8 +610,8 @@
            abgegrenzte Box (eigener Hintergrund + Rahmen + Farbakzent),
            damit Quelle/Ziel/Cleanup klar auseinanderzuhalten sind. */
         .filemgmt-subsection {
-            background: #1c1c1c;
-            border: 1px solid #2c2c2c;
+            background: var(--surface-alt);
+            border: 1px solid var(--border-soft);
             border-left-width: 3px;
             border-radius: 8px;
             padding: 12px 14px;
@@ -226,13 +622,46 @@
         .filemgmt-subsection--source { border-left-color: #4a90d9; }
         .filemgmt-subsection--target { border-left-color: #4ac97a; }
         .filemgmt-subsection--cleanup { border-left-color: #d9a94a; }
+        .filemgmt-subsection--network { border-left-color: #b07ad9; }
+        .filemgmt-subsection--log { border-left-color: #5aa8a8; }
+        .filemgmt-subsection--tmdb { border-left-color: #e0507a; }
+
+        /* Gruppierung der Einstellungsbereiche: Pfade / Netzwerk / Leere
+           Ordner werden klar voneinander abgesetzt (Trennlinie + Abstand +
+           dezente Gruppen-Überschrift), zusätzlich zu den farbigen
+           Einzel-Boxen innerhalb einer Gruppe. */
+        .filemgmt-group + .filemgmt-group {
+            margin-top: 26px;
+            padding-top: 22px;
+            border-top: 1px solid var(--border-soft);
+        }
+        .filemgmt-group-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--text-ghost);
+            margin: 0 0 12px;
+        }
+        .filemgmt-group .filemgmt-subsection + .filemgmt-subsection { margin-top: 10px; }
+
+        /* Scrollbar im Einstellungen-Modal an den Rest des Tools angleichen
+           (dunkler Track, blauer Thumb statt System-Standard-Scrollbar). */
+        #fileManagementBody {
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) var(--surface-sunken-2);
+        }
+        #fileManagementBody::-webkit-scrollbar { width: 10px; }
+        #fileManagementBody::-webkit-scrollbar-track { background: var(--surface-sunken-2); border-radius: 8px; }
+        #fileManagementBody::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; border: 2px solid var(--surface-sunken-2); }
+        #fileManagementBody::-webkit-scrollbar-thumb:hover { background: var(--accent-bright); }
         .filemgmt-subtitle {
             display: flex;
             align-items: center;
             gap: 6px;
             font-size: 12px;
             font-weight: 600;
-            color: #aaa;
+            color: var(--text-muted);
             margin: 0 0 10px;
             text-transform: uppercase;
             letter-spacing: 0.03em;
@@ -253,8 +682,8 @@
             padding: 7px 0;
             font-size: 13px;
         }
-        .network-range-row + .network-range-row { border-top: 1px solid #2c2c2c; }
-        .network-range-row .network-range-value { font-family: monospace; color: #ddd; }
+        .network-range-row + .network-range-row { border-top: 1px solid var(--border-soft); }
+        .network-range-row .network-range-value { font-family: monospace; color: var(--text-secondary-2); }
 
         /* Server-Info Box */
         .info-row {
@@ -265,34 +694,34 @@
             padding: 5px 0;
             font-size: 13px;
         }
-        .info-row + .info-row { border-top: 1px solid #2c2c2c; }
-        .info-label { color: #888; flex-shrink: 0; }
+        .info-row + .info-row { border-top: 1px solid var(--border-soft); }
+        .info-label { color: var(--text-faint); flex-shrink: 0; }
         .info-value {
             font-family: monospace;
-            color: #e0e0e0;
+            color: var(--text);
             text-align: right;
             word-break: break-all;
             overflow-wrap: anywhere;
         }
 
         /* Upload Formular */
-        label { display: block; margin-bottom: 5px; font-size: 13px; color: #aaa; }
+        label { display: block; margin-bottom: 5px; font-size: 13px; color: var(--text-muted); }
 
         input[type="file"] {
             margin-bottom: 10px;
             display: block;
             width: 100%;
-            color: #bbb;
-            background: #2a2a2a;
+            color: var(--text-tertiary);
+            background: var(--surface-raised);
             padding: 8px;
             border-radius: 8px;
-            border: 1px dashed #555;
+            border: 1px dashed var(--border-dashed);
             box-sizing: border-box;
             cursor: pointer;
         }
 
         button {
-            background-color: #0088cc;
+            background-color: var(--accent);
             color: white;
             border: none;
             padding: 10px;
@@ -304,51 +733,59 @@
             transition: background-color 0.2s, transform 0.1s;
         }
 
-        button:hover { background-color: #006699; }
+        button:hover { background-color: var(--accent-hover); }
         button:active { transform: scale(0.98); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        /* Beam-Start-Button: schnelles, blaues Pulsieren als Blickfang. */
+        @keyframes beamButtonPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0, 136, 204, 0.55); }
+            50% { box-shadow: 0 0 16px 5px rgba(0, 136, 204, 0.9); }
+        }
+        #beamSubmitBtn { animation: beamButtonPulse 0.9s ease-in-out infinite; }
+        #beamSubmitBtn:disabled { animation: none; }
+
         .file-picker-btn {
             display: block;
-            background: #2a2a2a;
-            border: 1px dashed #555;
+            background: var(--surface-raised);
+            border: 1px dashed var(--border-dashed);
             border-radius: 8px;
             padding: 10px;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
             text-align: center;
             font-size: 13.5px;
-            color: #bbb;
+            color: var(--text-tertiary);
             cursor: pointer;
             box-sizing: border-box;
             transition: background-color 0.2s;
         }
-        .file-picker-btn:hover { background-color: #333; }
-        .file-picker-btn.has-files { color: #00ccff; border-style: solid; border-color: #0088cc; }
+        .file-picker-btn:hover { background-color: var(--border); }
+        .file-picker-btn.has-files { color: var(--accent-bright); border-style: solid; border-color: var(--accent); }
 
         .btn-move {
             margin-top: 10px;
-            background-color: #2a2a2a;
-            border: 1px solid #0088cc;
-            color: #00ccff;
+            background-color: var(--surface-raised);
+            border: 1px solid var(--accent);
+            color: var(--accent-bright);
         }
-        .btn-move:hover { background-color: #17323f; }
+        .btn-move:hover { background-color: var(--accent-soft-bg); }
 
-        #resultCard { display: none; background: #18251c; border-color: #2e4d38; }
+        #resultCard { display: none; background: var(--success-bg); border-color: var(--success-border); }
 
         .result-title {
-            color: #4caf50; font-weight: bold; margin-bottom: 8px;
+            color: var(--success); font-weight: bold; margin-bottom: 8px;
             display: flex; align-items: center; gap: 6px;
         }
-        .result-details { font-size: 13px; line-height: 1.5; word-break: break-all; color: #ccc; }
-        .result-details span { color: #fff; font-weight: 500; }
+        .result-details { font-size: 13px; line-height: 1.5; word-break: break-all; color: var(--text-secondary); }
+        .result-details span { color: var(--text-heading); font-weight: 500; }
 
-        .error-card { background: #2a1818 !important; border-color: #4d2e2e !important; }
-        .error-card .result-title { color: #f44336 !important; }
+        .error-card { background: var(--danger-bg) !important; border-color: var(--danger-border) !important; }
+        .error-card .result-title { color: var(--danger) !important; }
 
         /* NZBGet-Fortschrittsbalken */
         .nzb-progress-wrap { margin: 10px 0 2px; }
         .nzb-progress-bar {
-            background: #2a2a2a;
+            background: var(--surface-raised);
             border-radius: 6px;
             height: 9px;
             overflow: hidden;
@@ -356,19 +793,19 @@
         .nzb-progress-fill {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, #0088cc, #00ccff);
+            background: linear-gradient(90deg, var(--accent), var(--accent-bright));
             transition: width 0.6s ease;
         }
         .nzb-progress-label {
             margin-top: 4px;
             font-size: 11px;
-            color: #888;
+            color: var(--text-faint);
             text-align: right;
         }
 
         /* Kategorie-Verzeichnisse */
         .cat-block { padding: 8px 0; }
-        .cat-block + .cat-block { border-top: 1px solid #2c2c2c; }
+        .cat-block + .cat-block { border-top: 1px solid var(--border-soft); }
 
         .cat-head {
             display: flex;
@@ -378,17 +815,17 @@
         }
 
         .cat-icon { font-size: 14px; }
-        .cat-name { font-size: 13px; font-weight: 600; color: #ddd; flex-shrink: 0; }
+        .cat-name { font-size: 13px; font-weight: 600; color: var(--text-secondary-2); flex-shrink: 0; }
         .cat-check {
             width: 15px; height: 15px;
             border-radius: 50%;
-            background: #333;
+            background: var(--border);
             display: flex; align-items: center; justify-content: center;
             font-size: 9px;
             color: transparent;
             flex-shrink: 0;
         }
-        .cat-check.set { background: #2e4d38; color: #4caf50; }
+        .cat-check.set { background: var(--success-border); color: var(--success); }
 
         .cat-path-row {
             display: flex;
@@ -401,35 +838,36 @@
             flex: 1;
             font-family: monospace;
             font-size: 11.5px;
-            color: #ccc;
+            color: var(--text-secondary);
             word-break: break-all;
         }
-        .cat-path.empty { color: #666; font-style: italic; }
+        .cat-path.empty { color: var(--text-faintest); font-style: italic; }
 
         .btn-secondary {
-            background-color: #2a2a2a;
-            border: 1px solid #444;
+            background-color: var(--surface-raised);
+            color: var(--text-heading);
+            border: 1px solid var(--border-input);
             width: auto;
             padding: 6px 10px;
             font-size: 12px;
             font-weight: 500;
             flex-shrink: 0;
         }
-        .btn-secondary:hover { background-color: #333; }
+        .btn-secondary:hover { background-color: var(--border); }
 
         .btn-danger {
-            background-color: #3a1e1e;
-            border: 1px solid #5a2e2e;
-            color: #f44336;
+            background-color: var(--danger-btn-bg);
+            border: 1px solid var(--danger-btn-border);
+            color: var(--danger);
         }
-        .btn-danger:hover { background-color: #4a2424; }
+        .btn-danger:hover { background-color: var(--danger-btn-hover); }
 
         .file-mini-list {
             max-height: 84px;
             overflow-y: auto;
-            background: #161616;
+            background: var(--surface-sunken);
             border-radius: 8px;
-            border: 1px solid #2a2a2a;
+            border: 1px solid var(--surface-raised);
         }
 
         .file-mini-row {
@@ -439,11 +877,11 @@
             padding: 4px 10px;
             font-size: 11px;
         }
-        .file-mini-row + .file-mini-row { border-top: 1px solid #232323; }
-        .file-mini-name { font-family: monospace; color: #ccc; word-break: break-all; }
-        .file-mini-size { color: #777; flex-shrink: 0; white-space: nowrap; }
+        .file-mini-row + .file-mini-row { border-top: 1px solid var(--border-soft); }
+        .file-mini-name { font-family: monospace; color: var(--text-secondary); word-break: break-all; }
+        .file-mini-size { color: var(--text-fainter); flex-shrink: 0; white-space: nowrap; }
 
-        .file-mini-empty { padding: 8px; font-size: 11px; color: #666; text-align: center; }
+        .file-mini-empty { padding: 8px; font-size: 11px; color: var(--text-faintest); text-align: center; }
 
         /* Leere Ordner (Zielverzeichnisse) */
         .empty-dirs-list {
@@ -459,13 +897,13 @@
             align-items: center;
             gap: 8px;
             padding: 6px 10px;
-            background: #161616;
+            background: var(--surface-sunken);
             border-radius: 8px;
             font-size: 12px;
         }
-        .empty-dir-row input[type="checkbox"] { flex-shrink: 0; width: 15px; height: 15px; accent-color: #0088cc; }
-        .empty-dir-path { font-family: monospace; color: #ccc; word-break: break-all; flex: 1; }
-        .empty-dir-cat { color: #777; flex-shrink: 0; font-size: 10.5px; white-space: nowrap; }
+        .empty-dir-row input[type="checkbox"] { flex-shrink: 0; width: 15px; height: 15px; accent-color: var(--accent); }
+        .empty-dir-path { font-family: monospace; color: var(--text-secondary); word-break: break-all; flex: 1; }
+        .empty-dir-cat { color: var(--text-fainter); flex-shrink: 0; font-size: 10.5px; white-space: nowrap; }
 
         /* NZBGet-Warteschlange */
         .queue-list {
@@ -475,33 +913,132 @@
         }
         .queue-row {
             display: flex;
-            justify-content: space-between;
+            align-items: center;
             gap: 8px;
             padding: 6px 10px;
-            background: #161616;
+            background: var(--surface-sunken);
             border-radius: 8px;
             font-size: 12px;
         }
-        .queue-name { font-family: monospace; color: #ccc; word-break: break-all; }
-        .queue-size { color: #888; flex-shrink: 0; white-space: nowrap; }
+        .queue-name-wrap { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+        .queue-name { font-family: monospace; color: var(--text-secondary); word-break: break-all; }
+        .queue-size { color: var(--text-faint); flex-shrink: 0; white-space: nowrap; }
+
+        /* Stop-Button: bricht einen einzelnen Download/Warteschlangen-
+           Eintrag ab (NZBGet "GroupDelete"). Klein und zurückhaltend, bis
+           man drüber hovert. */
+        .stop-btn {
+            width: auto;
+            flex-shrink: 0;
+            background: transparent;
+            border: 1px solid var(--danger-btn-border);
+            color: var(--danger);
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 7px;
+            line-height: 1.3;
+            cursor: pointer;
+        }
+        .stop-btn:hover { background: var(--danger-btn-bg); }
+        .stop-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* Filmcover (TMDB) – bewusst klein gehalten (Thumbnail-Format),
+           kein großformatiges Poster. */
+        .poster-thumb, .poster-thumb-sm {
+            object-fit: cover;
+            border-radius: 4px;
+            flex-shrink: 0;
+            background: var(--surface-sunken-2);
+        }
+        .poster-thumb { width: 34px; height: 50px; box-shadow: 0 1px 3px var(--shadow); }
+        .poster-thumb-sm { width: 20px; height: 29px; border-radius: 3px; }
+        .poster-thumb-lg {
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            height: auto;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px var(--shadow);
+            transition: transform .15s ease;
+        }
+
+        /* "Zuletzt heruntergeladen": Reihe der letzten Cover, neueste links.
+           Zeigt bis zu RECENT_COVERS_COUNT (aktuell 12) Cover; die ersten 8
+           teilen sich die Kartenbreite gleichmäßig auf (ein Platz ist genau
+           1/8 der Breite), ab dem 9. Cover wird horizontal gescrollt statt
+           weiter zu stauchen. */
+        .cover-strip {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 2px 2px 8px;
+            scroll-behavior: smooth;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        .cover-strip::-webkit-scrollbar { display: none; }
+        .cover-strip-item {
+            flex: 0 0 calc((100% - 7 * 10px) / 8);
+            min-width: 50px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .cover-strip-item:hover .poster-thumb-lg { transform: scale(1.04); }
+        .cover-strip-name {
+            font-size: 10px;
+            color: var(--text-faint);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+        .cover-strip-refresh-row { text-align: center; margin-top: -2px; }
+        .cover-strip-refresh-btn {
+            background: none;
+            border: 1px solid var(--border-input);
+            color: var(--text-faint);
+            font-size: 11px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .cover-strip-refresh-btn:hover { background: var(--surface-sunken); color: var(--text-secondary); }
+        .cover-strip-refresh-btn:disabled { opacity: 0.5; cursor: default; }
 
         /* Aktiver Download im immer sichtbaren NZBGet-Status */
         .queue-active {
-            background: #161c22;
-            border: 1px solid #24333d;
-            border-left: 3px solid #00ccff;
+            background: var(--queue-active-bg);
+            border: 1px solid var(--queue-active-border);
+            border-left: 3px solid var(--accent-bright);
             border-radius: 8px;
             padding: 10px 12px;
             margin-bottom: 10px;
         }
+        .queue-active-row { display: flex; align-items: flex-start; gap: 10px; }
+        .queue-active-row .stop-btn { align-self: center; }
+        .queue-active-body { flex: 1; min-width: 0; }
         .queue-active-name {
             font-family: monospace;
             font-size: 12.5px;
-            color: #fff;
+            color: var(--text-heading);
             word-break: break-all;
             margin-bottom: 6px;
         }
 
+        /* Gerade über dieses Tool gebeamte, aber von NZBGet noch nicht aktiv
+           heruntergeladene Datei ("wird verarbeitet…") – erscheint im immer
+           sichtbaren NZBGet-Status, bis der echte Download beginnt und die
+           normale Fortschrittsanzeige (.queue-active) übernimmt. */
+        .queue-processing { opacity: 0.85; }
+        .queue-processing-label {
+            font-size: 11.5px;
+            color: var(--text-faint);
+            font-style: italic;
+        }
         /* Ergebnisse Alle-Verschieben */
         .move-results { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
         .move-result-row {
@@ -511,12 +1048,12 @@
             padding: 6px 10px;
             border-radius: 8px;
             font-size: 12px;
-            background: #161616;
+            background: var(--surface-sunken);
         }
-        .move-result-row.ok { border-left: 3px solid #4caf50; }
+        .move-result-row.ok { border-left: 3px solid var(--success); }
         .move-result-row.partial { border-left: 3px solid #ff9800; }
-        .move-result-row.error { border-left: 3px solid #f44336; }
-        .move-result-row.skipped, .move-result-row.empty { border-left: 3px solid #555; color: #999; }
+        .move-result-row.error { border-left: 3px solid var(--danger); }
+        .move-result-row.skipped, .move-result-row.empty { border-left: 3px solid var(--border-dashed); color: var(--text-dim); }
         .move-result-cat { font-weight: 600; width: 55px; flex-shrink: 0; }
 
         .btn-row { display: flex; gap: 8px; }
@@ -530,20 +1067,22 @@
             flex-direction: column;
         }
         .log-entry { padding: 8px 0; font-size: 12px; }
-        .log-entry + .log-entry { border-top: 1px solid #2c2c2c; }
+        .log-entry + .log-entry { border-top: 1px solid var(--border-soft); }
+        .log-entry-row { display: flex; gap: 8px; align-items: flex-start; }
+        .log-entry-body { flex: 1; min-width: 0; }
         .log-entry-head {
             display: flex;
             justify-content: space-between;
             gap: 8px;
         }
-        .log-entry-name { font-family: monospace; color: #e0e0e0; word-break: break-all; }
-        .log-entry-time { color: #777; flex-shrink: 0; white-space: nowrap; }
-        .log-entry-meta { margin-top: 3px; color: #888; }
-        .empty-note { color: #666; font-size: 12.5px; padding: 6px 0; }
+        .log-entry-name { font-family: monospace; color: var(--text); word-break: break-all; }
+        .log-entry-time { color: var(--text-fainter); flex-shrink: 0; white-space: nowrap; }
+        .log-entry-meta { margin-top: 3px; color: var(--text-faint); }
+        .empty-note { color: var(--text-faintest); font-size: 12.5px; padding: 6px 0; }
 
         /* Ordner-Browser Modal */
         .modal-backdrop {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            position: fixed; inset: 0; background: var(--backdrop);
             display: none; align-items: center; justify-content: center;
             z-index: 100; padding: 20px; box-sizing: border-box;
         }
@@ -553,21 +1092,21 @@
         #modalBackdrop { z-index: 110; }
 
         .modal {
-            background: #1e1e1e; border: 1px solid #333; border-radius: 16px;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
             width: 440px; max-width: 100%; max-height: 80vh;
             display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 20px var(--shadow-strong);
         }
 
-        .modal-head { padding: 16px 20px; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; }
-        .modal-head h3 { margin: 0; font-size: 15px; color: #fff; }
-        .modal-close { background: none; border: none; color: #888; font-size: 18px; width: auto; padding: 0 4px; cursor: pointer; }
-        .modal-close:hover { color: #fff; background: none; }
+        .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .modal-head h3 { margin: 0; font-size: 15px; color: var(--text-heading); }
+        .modal-close { background: none; border: none; color: var(--text-faint); font-size: 18px; width: auto; padding: 0 4px; cursor: pointer; }
+        .modal-close:hover { color: var(--text-heading); background: none; }
 
-        .modal-toolbar { padding: 12px 20px; display: flex; gap: 10px; border-bottom: 1px solid #333; }
+        .modal-toolbar { padding: 12px 20px; display: flex; gap: 10px; border-bottom: 1px solid var(--border); }
         select, input[type="text"].cat-input {
-            font-family: inherit; font-size: 13px; background: #2a2a2a; color: #e0e0e0;
-            border: 1px solid #444; border-radius: 8px; padding: 7px 10px;
+            font-family: inherit; font-size: 13px; background: var(--surface-raised); color: var(--text);
+            border: 1px solid var(--border-input); border-radius: 8px; padding: 7px 10px;
         }
 
         .add-category-row {
@@ -575,51 +1114,55 @@
             gap: 8px;
             margin-top: 10px;
             padding-top: 10px;
-            border-top: 1px solid #2c2c2c;
+            border-top: 1px solid var(--border-soft);
         }
         .add-category-row input[type="text"].cat-input { flex: 1; min-width: 0; }
         .add-category-row button { width: auto; flex-shrink: 0; }
 
         .modal-path {
-            padding: 10px 20px; font-family: monospace; font-size: 12px; color: #00ccff;
-            background: #161616; word-break: break-all; border-bottom: 1px solid #333;
+            padding: 10px 20px; font-family: monospace; font-size: 12px; color: var(--accent-bright);
+            background: var(--surface-sunken); word-break: break-all; border-bottom: 1px solid var(--border);
         }
 
         .modal-list { flex: 1; overflow-y: auto; padding: 4px 0; }
         .folder-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-size: 13.5px; }
-        .folder-item:hover { background: #262626; }
+        .folder-item:hover { background: var(--surface-raised); }
 
-        .modal-foot { padding: 14px 20px; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
         .modal-foot button { width: auto; padding: 9px 16px; font-size: 13px; }
-        .modal-empty { padding: 20px; color: #666; font-size: 13px; text-align: center; }
+        .modal-empty { padding: 20px; color: var(--text-faintest); font-size: 13px; text-align: center; }
 
         .toast {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             padding: 12px 18px; border-radius: 10px; font-size: 13.5px;
-            background: #1e1e1e; border: 1px solid #333; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 20px var(--shadow);
             opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 200;
             max-width: 90vw; text-align: center;
         }
         .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
-        .toast.ok { border-color: #2e4d38; color: #4caf50; }
-        .toast.err { border-color: #4d2e2e; color: #f44336; }
+        .toast.ok { border-color: var(--success-border); color: var(--success); }
+        .toast.err { border-color: var(--danger-border); color: var(--danger); }
 
-        /* Terminal-Box für Hardware-Daten */
+        /* Terminal-Box für Hardware-Daten: passt sich wie der Rest der
+           Oberfläche dem Theme an (eigene Hintergrund-Variablen für den
+           dunkleren "Konsolen"-Look, Text-/Rahmenfarben teilen sich die
+           allgemeinen Theme-Variablen). */
         .terminal-card {
-            background: #0c0c0c;
+            background: var(--terminal-bg);
             border-radius: 14px;
-            border: 1px solid #333;
+            border: 1px solid var(--border);
             overflow: hidden;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 8px 20px var(--shadow);
+            transition: background 0.15s ease;
         }
 
         .terminal-titlebar {
-            background: #1a1a1a;
+            background: var(--terminal-titlebar-bg);
             padding: 7px 12px;
             display: flex;
             align-items: center;
             gap: 6px;
-            border-bottom: 1px solid #262626;
+            border-bottom: 1px solid var(--border-soft);
             margin: 0;
             cursor: pointer;
             user-select: none;
@@ -634,7 +1177,7 @@
 
         .terminal-title {
             margin-left: 6px;
-            color: #777;
+            color: var(--text-fainter);
             font-size: 11px;
             font-family: 'SFMono-Regular', Consolas, monospace;
         }
@@ -644,7 +1187,7 @@
             font-family: 'SFMono-Regular', Consolas, monospace;
             font-size: 12px;
             line-height: 1.65;
-            color: #c9c9c9;
+            color: var(--text-secondary);
             display: flex;
             flex-wrap: wrap;
             gap: 14px 20px;
@@ -653,19 +1196,19 @@
         /* Zwei Bereiche: links Serverdaten/Hardware, rechts Zugriffs-Log */
         .terminal-col { flex: 1 1 220px; min-width: 200px; }
         .terminal-col-right {
-            border-top: 1px solid #262626;
+            border-top: 1px solid var(--border-soft);
             padding-top: 12px;
         }
         .term-access-heading {
-            color: #888;
+            color: var(--text-faint);
             margin-bottom: 6px;
             white-space: normal;
         }
         .term-access-heading strong { color: #0088cc; font-weight: normal; }
         .access-log-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
         .access-log-row { display: flex; gap: 8px; white-space: nowrap; }
-        .access-log-time { color: #888; flex-shrink: 0; }
-        .access-log-ip { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; }
+        .access-log-time { color: var(--text-faint); flex-shrink: 0; }
+        .access-log-ip { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 
         .term-prompt { color: #4caf50; }
         .term-path { color: #0088cc; }
@@ -676,24 +1219,25 @@
             white-space: nowrap;
         }
 
-        .term-label { color: #888; width: 78px; flex-shrink: 0; }
-        .term-value { color: #e0e0e0; flex-shrink: 0; }
-        .term-extra { color: #666; overflow: hidden; text-overflow: ellipsis; }
+        .term-label { color: var(--text-faint); width: 78px; flex-shrink: 0; }
+        .term-value { color: var(--text); flex-shrink: 0; }
+        .term-extra { color: var(--text-faintest); overflow: hidden; text-overflow: ellipsis; }
 
         .term-value.ok { color: #4caf50; }
-        .term-value.warn { color: #ffbd2e; }
-        .term-value.crit { color: #ff5f56; }
+        .term-value.warn { color: var(--term-warn); }
+        .term-value.crit { color: var(--term-crit); }
 
-        .term-section { margin-top: 8px; color: #888; }
+        .term-section { margin-top: 8px; color: var(--text-faint); }
         .term-disk-row { display: flex; gap: 8px; padding-left: 10px; white-space: nowrap; }
-        .term-disk-label { width: 68px; flex-shrink: 0; color: #ccc; }
+        .term-disk-label { width: 68px; flex-shrink: 0; color: var(--text-secondary); }
 
-        .term-empty { color: #666; }
+        .term-empty { color: var(--text-faintest); }
 
         .terminal-body.collapsed {
             padding-top: 0;
             padding-bottom: 0;
         }
+
 
         /* -------------------------------------------------------------
            Responsive: Auf Tablet/PC wirkte die Oberfläche bisher sehr
@@ -705,8 +1249,7 @@
             body { padding: 32px; }
             .container { max-width: 700px; gap: 14px; }
             .card { padding: 20px 26px; border-radius: 18px; }
-            .header-card { padding: 16px 24px; gap: 20px; }
-            h1 { font-size: 23px; }
+            .header-card { padding: 16px 24px; gap: 20px; min-height: 130px; }
             .subtitle { font-size: 13px; }
             .section-title { font-size: 14px; margin-bottom: 10px; }
             .status-card { padding: 12px 22px; font-size: 15px; }
@@ -736,8 +1279,7 @@
             body { padding: 44px; }
             .container { max-width: 900px; gap: 18px; }
             .card { padding: 26px 32px; border-radius: 20px; }
-            .header-card { padding: 22px 30px; gap: 26px; }
-            h1 { font-size: 29px; }
+            .header-card { padding: 22px 30px; gap: 26px; min-height: 160px; }
             .subtitle { font-size: 15px; }
             .section-title { font-size: 15.5px; margin-bottom: 12px; }
             .status-card { padding: 15px 26px; font-size: 16px; }
@@ -761,7 +1303,7 @@
             .term-disk-label { width: 86px; }
             .modal { width: 620px; }
         }
-    </style>
+</style>
 </head>
 <body>
 
@@ -769,37 +1311,20 @@
 
     <!-- Titel Box mit Beamer-Grafik -->
     <div class="card header-card" id="headerCard">
+        <!-- Wabernde blaue Plasma-Masse im Hintergrund: drei weich verwischte,
+             langsam wandernde/pulsierende Farbflecken, von der Box sauber
+             abgeschnitten (overflow: hidden auf .header-card). -->
+        <div class="plasma-bg" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+        <!-- Gelegentliche Störschübe: rosa ("Grudge"-artiges Rauschen) und
+             klassisches weißes TV-Rauschen (Sendeschluss), beide nur kurz
+             und sporadisch statt dauerhaft. -->
+        <div class="static-flicker" aria-hidden="true"></div>
+        <div class="static-white" aria-hidden="true"></div>
+        <button type="button" class="theme-toggle-btn" id="themeToggleBtn" title="Design: Automatisch (Systemvorgabe)">🌓</button>
         <button type="button" class="settings-btn" id="settingsBtn" title="Einstellungen"><span class="icon-mono">⚙️</span></button>
-        <svg class="beam-banner" viewBox="0 0 350 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="6" opacity="0.15" class="glow-effect" />
-            <path d="M 60 38 Q 175 12 290 38" stroke="#ffffff" stroke-width="2.5" fill="none" class="data-stream" />
-
-            <g transform="translate(20, 18)" opacity="0.9">
-                <rect x="0" y="0" width="32" height="24" rx="4" fill="none" stroke="#ffffff" stroke-width="2"/>
-                <rect x="3" y="3" width="26" height="18" rx="2" fill="#ffffff" opacity="0.12"/>
-                <path d="M 9 9 L 22 16 M 22 9 L 9 16" stroke="#ffffff" stroke-width="1.3" opacity="0.6"/>
-                <path d="M 12 24 L 20 24 L 22 30 L 10 30 Z" fill="#ffffff" opacity="0.5"/>
-                <rect x="6" y="30" width="20" height="2" rx="1" fill="#ffffff" opacity="0.35"/>
-            </g>
-
-            <g transform="translate(298, 12)" opacity="0.9">
-                <rect x="0" y="0" width="28" height="38" rx="4" fill="none" stroke="#ffffff" stroke-width="2"/>
-                <line x1="5" y1="9" x2="23" y2="9" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
-                <line x1="5" y1="19" x2="23" y2="19" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
-                <line x1="5" y1="29" x2="23" y2="29" stroke="#ffffff" stroke-width="2" opacity="0.4"/>
-                <circle cx="21" cy="9" r="1.3" fill="#ffffff"/>
-                <circle cx="21" cy="19" r="1.3" fill="#ffffff"/>
-                <circle cx="21" cy="29" r="1.3" fill="#ffffff"/>
-            </g>
-
-            <g transform="translate(158, 14)">
-                <rect x="0" y="0" width="18" height="13" rx="3" fill="#ffffff" class="nzb-packet-fill" />
-                <text x="9" y="9.5" fill="#121212" font-size="6" font-weight="bold" text-anchor="middle" font-family="sans-serif">NZB</text>
-            </g>
-        </svg>
+        <h1><span class="beam-title-nzb">NZB</span> <span class="beam-title-beamer">BEAMER</span></h1>
 
         <div class="header-text">
-            <h1>NZB Beamer</h1>
             <div class="subtitle">by Logistica Lux 2026</div>
         </div>
     </div>
@@ -814,8 +1339,18 @@
         <span class="status-side" id="statusPort">–</span>
     </div>
 
-    <!-- Hardware-Überwachung + Zugriffs-Log (Terminal-Look), horizontal
-         zweigeteilt: links Serverdaten, rechts protokollierte Zugriffe. -->
+    <!-- Zuletzt heruntergeladen: Filmstreifen der Cover der letzten Beams,
+         neueste links – nur sichtbar, sobald mindestens ein Cover da ist. -->
+    <div class="card" id="recentCoversCard" style="display:none">
+        <div class="section-title">Zuletzt heruntergeladen</div>
+        <div class="cover-strip" id="coverStrip"></div>
+        <div class="cover-strip-refresh-row">
+            <button type="button" class="cover-strip-refresh-btn" id="coverStripRefreshBtn">↻ Aktualisieren</button>
+        </div>
+    </div>
+
+    <!-- Hardware-Überwachung (Terminal-Look). Das Zugriffs-Log liegt jetzt
+         in den Einstellungen (Protokoll-Bereich) statt hier. -->
     <div class="terminal-card">
         <div class="terminal-titlebar collapsible-head collapsed" id="hwToggle">
             <span class="terminal-dot dot-red"></span>
@@ -829,12 +1364,7 @@
                 <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
                 <div class="term-empty">lädt…</div>
             </div>
-            <div class="terminal-col terminal-col-right">
-                <div class="term-access-heading" id="accessLogHeading">Server: <strong>–</strong> · Port <strong>–</strong> · –</div>
-                <div class="access-log-list" id="accessLogList">
-                    <div class="term-empty">keine Zugriffe protokolliert</div>
-                </div>
-            </div>
+            <div class="terminal-col" id="hwDisksCol"></div>
         </div>
     </div>
 
@@ -845,7 +1375,7 @@
             <label for="nzbFile">NZB-Datei(en) von diesem Rechner senden:</label>
             <input type="file" id="nzbFile" accept=".nzb" multiple required style="display:none;">
             <label for="nzbFile" class="file-picker-btn" id="filePickerLabel"><span class="icon-mono">📁</span> Datei(en) auswählen</label>
-            <button type="submit">Jetzt Beamen</button>
+            <button type="submit" id="beamSubmitBtn">Jetzt Beamen</button>
         </form>
     </div>
 
@@ -854,45 +1384,16 @@
         <div class="result-details" id="resultBody"></div>
     </div>
 
-    <!-- Letzte NZB: bleibt bis zur nächsten gesendeten NZB stehen -->
-    <div class="card" id="nzbInfoCard" style="display:none;">
-        <div class="section-title">Letzte NZB</div>
-        <div class="info-row"><span class="info-label">Datei</span><span class="info-value" id="nzbName">–</span></div>
-        <div class="info-row"><span class="info-label">Größe</span><span class="info-value" id="nzbSize">–</span></div>
-        <div class="info-row"><span class="info-label">Erhalten</span><span class="info-value" id="nzbReceivedAt">–</span></div>
-        <div class="nzb-progress-wrap" id="nzbgetProgressWrap" style="display:none;">
-            <div class="nzb-progress-bar"><div class="nzb-progress-fill" id="nzbgetProgressFill"></div></div>
-            <div class="nzb-progress-label" id="nzbgetProgressLabel">0%</div>
-        </div>
-        <div class="info-row"><span class="info-label">NZBGet</span><span class="info-value" id="nzbgetStatusText">–</span></div>
-    </div>
-
-    <!-- NZBGet-Status: immer sichtbar, zeigt was gerade aktiv ist -->
+    <!-- NZBGet-Status: immer sichtbar, zeigt was gerade aktiv ist (inkl.
+         "wird verarbeitet…" für gerade gebeamte, noch nicht aktiv
+         heruntergeladene Dateien) -->
     <div class="card" id="nzbgetQueueCard">
-        <div class="section-title">NZBGet-Status</div>
+        <div class="section-title-row">
+            <div class="section-title">NZBGet-Status</div>
+            <button type="button" class="btn-secondary btn-danger" id="nzbgetCancelAllBtn" title="Alle Downloads abbrechen, inkl. Warteschlange">✕ Alle abbrechen</button>
+        </div>
         <div id="nzbgetActiveBox"></div>
         <div class="queue-list" id="nzbgetQueueList"></div>
-    </div>
-
-    <!-- Netzwerk-Einstellungen: erlaubte IP-Bereiche -->
-    <div class="card">
-        <div class="collapsible-head collapsed" id="networkToggle">
-            <div class="section-title">Network Settings</div>
-            <span class="chevron">▼</span>
-        </div>
-        <div class="collapsible-body collapsed" id="networkBody">
-            <div class="empty-note" style="margin-bottom:10px;">
-                Nur Clients aus diesen IP-Bereichen dürfen auf das Tool zugreifen. Ein Bereich endet mit einem Punkt für ein Präfix (z.B. <code>192.168.178.</code>) oder ist eine einzelne IP (z.B. <code>100.120.183.112</code>). localhost ist immer erlaubt.
-            </div>
-            <div id="networkRangesList"></div>
-            <div class="add-category-row">
-                <input type="text" class="cat-input" id="newNetworkRange" placeholder="z.B. 192.168.178. oder 10.0.0.5" maxlength="60">
-                <button class="btn-secondary" id="addNetworkRangeBtn"><span class="icon-mono">➕</span> Bereich hinzufügen</button>
-            </div>
-            <div class="btn-row" style="margin-top:10px;">
-                <button class="btn-secondary btn-danger" id="networkRangesResetBtn" style="flex:1;">Auf Standard zurücksetzen</button>
-            </div>
-        </div>
     </div>
 
     <!-- Automatisches Verschieben: Status des letzten Laufs, standardmäßig geschlossen -->
@@ -905,19 +1406,6 @@
             <div class="info-row"><span class="info-label">Zeitpunkt</span><span class="info-value" id="lastMoveAt">noch nie</span></div>
             <div class="move-results" id="moveResults"></div>
             <button class="btn-move" id="moveNowBtn"><span class="icon-mono">🚀</span> Jetzt verschieben</button>
-        </div>
-    </div>
-
-    <!-- Protokoll: alle übertragenen NZBs, standardmäßig geschlossen -->
-    <div class="card">
-        <div class="collapsible-head collapsed" id="logToggle">
-            <div class="section-title">Protokoll</div>
-            <span class="chevron">▼</span>
-        </div>
-        <div class="collapsible-body collapsed" id="logBody">
-            <div class="log-list" id="logList">
-                <div class="empty-note">Noch nicht geladen.</div>
-            </div>
         </div>
     </div>
 
@@ -957,49 +1445,111 @@
 <!-- Einstellungen: File Management, per Settings-Button im Header erreichbar
      (nicht mehr fest auf der Hauptseite) -->
 <div class="modal-backdrop" id="settingsModalBackdrop">
-    <div class="modal" style="width: 480px; max-height: 85vh;">
+    <div class="modal" style="width: 640px; max-width: 92vw; max-height: 90vh;">
         <div class="modal-head">
             <h3>Einstellungen</h3>
             <button class="modal-close" id="settingsModalCloseBtn">✕</button>
         </div>
         <div style="padding: 16px 20px; overflow-y: auto;" id="fileManagementBody">
 
-            <div class="filemgmt-subsection filemgmt-subsection--source">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📤</span> Quellverzeichnisse</div>
-                <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
-                     abgelegt werden -->
-                <div class="cat-block">
-                    <div class="cat-head">
-                        <span class="cat-icon icon-mono">📥</span>
-                        <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+            <div class="filemgmt-group">
+                <div class="filemgmt-group-title">Pfade</div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--source">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📤</span> Quellverzeichnisse</div>
+                    <!-- Wo Direkt-Upload ("Jetzt Beamen")-Dateien auf diesem Server
+                         abgelegt werden -->
+                    <div class="cat-block">
+                        <div class="cat-head">
+                            <span class="cat-icon icon-mono">📥</span>
+                            <span class="cat-name">Beam-Ablageordner (Direkt-Upload)</span>
+                        </div>
+                        <div class="cat-path-row">
+                            <div class="cat-path" id="uploadDirPath">wird geladen…</div>
+                            <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
+                            <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+                        </div>
                     </div>
-                    <div class="cat-path-row">
-                        <div class="cat-path" id="uploadDirPath">wird geladen…</div>
-                        <button class="btn-secondary" id="uploadDirChangeBtn">Ändern</button>
-                        <button class="btn-secondary btn-danger" id="uploadDirResetBtn">Standard</button>
+
+                    <div id="sourceBlocks"></div>
+                    <div class="add-category-row">
+                        <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
+                        <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
                     </div>
                 </div>
 
-                <div id="sourceBlocks"></div>
-                <div class="add-category-row">
-                    <input type="text" class="cat-input" id="newCategoryLabel" placeholder="z.B. Hörbücher" maxlength="40">
-                    <button class="btn-secondary" id="addCategoryBtn"><span class="icon-mono">➕</span> Kategorie hinzufügen</button>
+                <div class="filemgmt-subsection filemgmt-subsection--target">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zielverzeichnisse</div>
+                    <div id="targetBlocks"></div>
+                    <div class="filemgmt-subtitle" style="margin-top:14px;"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zweites Ziel (Ausweich bei wenig Speicherplatz)</div>
+                    <div id="altTargetBlocks"></div>
                 </div>
             </div>
 
-            <div class="filemgmt-subsection filemgmt-subsection--target">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📥</span> Zielverzeichnisse</div>
-                <div id="targetBlocks"></div>
+            <div class="filemgmt-group">
+                <div class="filemgmt-group-title">Netzwerk</div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--network">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🌐</span> Erlaubte IP-Bereiche</div>
+                    <div class="empty-note" style="margin-bottom:10px;">
+                        Nur Clients aus diesen IP-Bereichen dürfen auf das Tool zugreifen. Ein Bereich endet mit einem Punkt für ein Präfix (z.B. <code>192.168.178.</code>) oder ist eine einzelne IP (z.B. <code>100.120.183.112</code>). localhost ist immer erlaubt.
+                    </div>
+                    <div id="networkRangesList"></div>
+                    <div class="add-category-row">
+                        <input type="text" class="cat-input" id="newNetworkRange" placeholder="z.B. 192.168.178. oder 10.0.0.5" maxlength="60">
+                        <button class="btn-secondary" id="addNetworkRangeBtn"><span class="icon-mono">➕</span> Bereich hinzufügen</button>
+                    </div>
+                    <div class="btn-row" style="margin-top:10px;">
+                        <button class="btn-secondary btn-danger" id="networkRangesResetBtn" style="flex:1;">Auf Standard zurücksetzen</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="filemgmt-subsection filemgmt-subsection--cleanup">
-                <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🧹</span> Leere Ordner</div>
-                <div class="btn-row">
-                    <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
-                    <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
+            <div class="filemgmt-group">
+                <div class="filemgmt-group-title">Filmcover</div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--tmdb">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🎬</span> TMDB-Anbindung</div>
+                    <div class="empty-note" style="margin-bottom:10px;">
+                        Mit einem kostenlosen API-Key von <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">themoviedb.org</a> werden bei Filmen automatisch kleine Cover neben Download und Warteschlange angezeigt. Ohne Key bleibt das Feature einfach aus.
+                    </div>
+                    <div class="add-category-row">
+                        <input type="text" class="cat-input" id="tmdbApiKeyInput" placeholder="TMDB API-Key (v3 auth)" maxlength="80">
+                        <button class="btn-secondary" id="tmdbApiKeySaveBtn">Speichern</button>
+                    </div>
                 </div>
-                <div class="empty-dirs-list" id="emptyDirsList">
-                    <div class="empty-note">Noch nicht geprüft.</div>
+            </div>
+
+            <div class="filemgmt-group">
+                <div class="filemgmt-group-title">Leere Ordner</div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--cleanup">
+                    <div class="btn-row">
+                        <button class="btn-secondary" id="emptyDirsCheckBtn" style="flex:1;">🔍 Prüfen</button>
+                        <button class="btn-secondary btn-danger" id="emptyDirsDeleteBtn" style="flex:1;" disabled>Ausgewählte löschen</button>
+                    </div>
+                    <div class="empty-dirs-list" id="emptyDirsList">
+                        <div class="empty-note">Noch nicht geprüft.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filemgmt-group">
+                <div class="filemgmt-group-title">Protokoll</div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--log">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">📜</span> Alle übertragenen NZBs</div>
+                    <div class="log-list" id="logList">
+                        <div class="empty-note">Noch nicht geladen.</div>
+                    </div>
+                </div>
+
+                <div class="filemgmt-subsection filemgmt-subsection--log">
+                    <div class="filemgmt-subtitle"><span class="filemgmt-subtitle-icon icon-mono">🌐</span> Zugriffe</div>
+                    <div class="term-access-heading" id="accessLogHeading">Server: <strong>–</strong> · Port <strong>–</strong> · –</div>
+                    <div class="access-log-list" id="accessLogList">
+                        <div class="empty-note">keine Zugriffe protokolliert</div>
+                    </div>
                 </div>
             </div>
 
@@ -1180,102 +1730,20 @@
             fileInput.value = '';
             filePickerLabel.innerHTML = '<span class="icon-mono">📁</span> Datei(en) auswählen';
             filePickerLabel.classList.remove('has-files');
-            loadNzbStatus();
+            // Sofortige Aktualisierung des NZBGet-Status, statt auf das
+            // nächste 6-Sekunden-Intervall zu warten – zeigt die gerade
+            // gebeamte Datei sofort als "wird verarbeitet…" an.
+            if (window.loadNzbgetQueue) window.loadNzbgetQueue();
+            // Cover-Filmstreifen: einmal sofort (zeigt ggf. schon länger
+            // aufgelöste Cover) und einmal verzögert, sobald die TMDB-Suche
+            // für die gerade gebeamte Datei im Hintergrund fertig sein sollte.
+            if (window.loadRecentCovers) { window.loadRecentCovers(); setTimeout(window.loadRecentCovers, 7000); }
 
             // Statusmeldung nach 10 Sekunden wieder ausblenden
             window._resultHideTimer = setTimeout(() => {
                 resultCard.style.display = 'none';
             }, 10000);
         });
-    })();
-
-    // -----------------------------------------------------------------
-    // Letzte NZB: Zusammenfassung + Download-Fortschritt
-    // -----------------------------------------------------------------
-    (function () {
-        const nzbCard = document.getElementById('nzbInfoCard');
-        const nzbName = document.getElementById('nzbName');
-        const nzbSize = document.getElementById('nzbSize');
-        const nzbReceivedAt = document.getElementById('nzbReceivedAt');
-        const nzbgetProgressWrap = document.getElementById('nzbgetProgressWrap');
-        const nzbgetProgressFill = document.getElementById('nzbgetProgressFill');
-        const nzbgetProgressLabel = document.getElementById('nzbgetProgressLabel');
-        const nzbgetStatusText = document.getElementById('nzbgetStatusText');
-        const headerCard = document.getElementById('headerCard');
-
-        function formatTimestamp(ms) {
-            if (!ms) return '–';
-            const d = new Date(ms);
-            return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        const NZBGET_STATUS_LABELS = {
-            DOWNLOADING: 'Lädt herunter',
-            PAUSED: 'Pausiert',
-            QUEUED: 'In Warteschlange',
-            FETCHING: 'NZB wird eingelesen',
-        };
-
-        function renderNzbgetStatus(data) {
-            if (!data.nzbgetReachable) {
-                nzbgetProgressWrap.style.display = 'none';
-                nzbgetStatusText.textContent = 'NZBGet nicht erreichbar';
-                headerCard.classList.remove('downloading');
-                return;
-            }
-
-            const g = data.nzbget;
-
-            if (!g || g.phase === 'unknown') {
-                nzbgetProgressWrap.style.display = 'none';
-                nzbgetStatusText.textContent = 'Wartet, bis NZBGet die Datei einliest…';
-                headerCard.classList.remove('downloading');
-                return;
-            }
-
-            if (g.phase === 'done') {
-                nzbgetProgressWrap.style.display = 'block';
-                nzbgetProgressFill.style.width = '100%';
-                nzbgetProgressLabel.textContent = '100%';
-                nzbgetStatusText.textContent = `Abgeschlossen (${g.status || 'fertig'})`;
-                headerCard.classList.remove('downloading');
-                return;
-            }
-
-            // aktiv in der Warteschlange – Logo zeigt den aktiven Zustand an
-            nzbgetProgressWrap.style.display = 'block';
-            nzbgetProgressFill.style.width = g.percent + '%';
-            nzbgetProgressLabel.textContent = `${g.percent}% · ${g.downloadedMB} / ${g.totalMB} MB`;
-            nzbgetStatusText.textContent = NZBGET_STATUS_LABELS[g.status] || g.status || 'Aktiv';
-            headerCard.classList.toggle('downloading', g.status === 'DOWNLOADING');
-        }
-
-        // Zeigt immer die NZB, die gerade aktiv heruntergeladen wird –
-        // fällt auf die zuletzt gesendete zurück, wenn keine aktiv ist
-        // (wichtig, wenn mehrere Dateien auf einmal gesendet wurden).
-        window.loadNzbStatus = async function loadNzbStatus() {
-            try {
-                const res = await fetch('/api/nzb-status');
-                const data = await res.json().catch(() => ({}));
-
-                if (!data || !data.fileName) {
-                    nzbCard.style.display = 'none';
-                    headerCard.classList.remove('downloading');
-                    return;
-                }
-
-                nzbCard.style.display = 'block';
-                nzbName.textContent = data.fileName;
-                nzbSize.textContent = `${data.totalSizeGb} GB`;
-                nzbReceivedAt.textContent = formatTimestamp(data.receivedAt);
-                renderNzbgetStatus(data);
-            } catch (err) {
-                // still leave the card as-is on transient errors
-            }
-        };
-
-        setInterval(window.loadNzbStatus, 5000);
-        window.loadNzbStatus();
     })();
 
     // -----------------------------------------------------------------
@@ -1287,7 +1755,9 @@
         const el = {
             sourceBlocks: document.getElementById('sourceBlocks'),
             targetBlocks: document.getElementById('targetBlocks'),
+            altTargetBlocks: document.getElementById('altTargetBlocks'),
             settingsBtn: document.getElementById('settingsBtn'),
+            themeToggleBtn: document.getElementById('themeToggleBtn'),
             settingsModalBackdrop: document.getElementById('settingsModalBackdrop'),
             settingsModalCloseBtn: document.getElementById('settingsModalCloseBtn'),
             settingsModalDoneBtn: document.getElementById('settingsModalDoneBtn'),
@@ -1304,11 +1774,17 @@
             hwToggle: document.getElementById('hwToggle'),
             hwBody: document.getElementById('hwBody'),
             hwStatsCol: document.getElementById('hwStatsCol'),
+            hwDisksCol: document.getElementById('hwDisksCol'),
             toast: document.getElementById('toast'),
             moveNowBtn: document.getElementById('moveNowBtn'),
             nzbgetQueueCard: document.getElementById('nzbgetQueueCard'),
             nzbgetActiveBox: document.getElementById('nzbgetActiveBox'),
             nzbgetQueueList: document.getElementById('nzbgetQueueList'),
+            nzbgetCancelAllBtn: document.getElementById('nzbgetCancelAllBtn'),
+            recentCoversCard: document.getElementById('recentCoversCard'),
+            coverStrip: document.getElementById('coverStrip'),
+            coverStripRefreshBtn: document.getElementById('coverStripRefreshBtn'),
+            headerCard: document.getElementById('headerCard'),
             newCategoryLabel: document.getElementById('newCategoryLabel'),
             addCategoryBtn: document.getElementById('addCategoryBtn'),
             uploadDirPath: document.getElementById('uploadDirPath'),
@@ -1317,12 +1793,12 @@
             emptyDirsCheckBtn: document.getElementById('emptyDirsCheckBtn'),
             emptyDirsDeleteBtn: document.getElementById('emptyDirsDeleteBtn'),
             emptyDirsList: document.getElementById('emptyDirsList'),
-            networkToggle: document.getElementById('networkToggle'),
-            networkBody: document.getElementById('networkBody'),
             networkRangesList: document.getElementById('networkRangesList'),
             newNetworkRange: document.getElementById('newNetworkRange'),
             addNetworkRangeBtn: document.getElementById('addNetworkRangeBtn'),
             networkRangesResetBtn: document.getElementById('networkRangesResetBtn'),
+            tmdbApiKeyInput: document.getElementById('tmdbApiKeyInput'),
+            tmdbApiKeySaveBtn: document.getElementById('tmdbApiKeySaveBtn'),
 
             modalBackdrop: document.getElementById('modalBackdrop'),
             modalTitle: document.getElementById('modalTitle'),
@@ -1378,9 +1854,14 @@
         }
 
         // ---- Verzeichnis-Blöcke rendern ----
+        function cfgKeyOf(section) {
+            return section === 'source' ? 'sources' : (section === 'target2' ? 'altTargets' : 'targets');
+        }
+
         function renderBlocks(container, section) {
-            container.innerHTML = CATEGORIES.map((cat) => {
-                const dir = state.config[section === 'source' ? 'sources' : 'targets'][cat.key];
+            const cats = section === 'target2' ? CATEGORIES.filter((c) => c.key === 'filme') : CATEGORIES;
+            container.innerHTML = cats.map((cat) => {
+                const dir = (state.config[cfgKeyOf(section)] || {})[cat.key];
                 return `
                     <div class="cat-block">
                         <div class="cat-head">
@@ -1410,7 +1891,7 @@
 
         async function clearDir(section, category) {
             const cat = CATEGORIES.find((c) => c.key === category);
-            const label = `${section === 'source' ? 'Quelle' : 'Ziel'} (${cat.label})`;
+            const label = `${section === 'source' ? 'Quelle' : (section === 'target2' ? 'Zweites Ziel' : 'Ziel')} (${cat.label})`;
             if (!confirm(`Verzeichnisdefinition "${label}" wirklich löschen?`)) return;
             try {
                 state.config = await api('/api/config/clear', {
@@ -1429,6 +1910,7 @@
         function renderConfig() {
             renderBlocks(el.sourceBlocks, 'source');
             renderBlocks(el.targetBlocks, 'target');
+            renderBlocks(el.altTargetBlocks, 'target2');
         }
 
         // ---- Kategorien laden (Basis-Kategorien + benutzerdefinierte) ----
@@ -1583,16 +2065,44 @@
             }
         });
 
+        // ---- Filmcover: TMDB-API-Key ----
+        async function loadTmdbSettings() {
+            try {
+                const data = await api('/api/tmdb-key');
+                el.tmdbApiKeyInput.value = data.key || '';
+            } catch (err) {
+                // Feld bleibt leer, kein Toast nötig – rein informatives Setting.
+            }
+        }
+
+        el.tmdbApiKeySaveBtn.addEventListener('click', async () => {
+            const value = el.tmdbApiKeyInput.value.trim();
+            el.tmdbApiKeySaveBtn.disabled = true;
+            try {
+                await api('/api/tmdb-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: value }),
+                });
+                showToast(value ? 'TMDB API-Key gespeichert.' : 'TMDB API-Key entfernt – Filmcover deaktiviert.', true);
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.tmdbApiKeySaveBtn.disabled = false;
+            }
+        });
+
         // ---- Übersicht (Dateien je Verzeichnis) laden ----
         async function loadOverview() {
             try {
                 const data = await api('/api/overview');
-                ['source', 'target'].forEach((section) => {
-                    const key = section === 'source' ? 'sources' : 'targets';
+                ['source', 'target', 'target2'].forEach((section) => {
+                    const key = cfgKeyOf(section);
                     CATEGORIES.forEach((cat) => {
                         const box = document.getElementById(`files-${section}-${cat.key}`);
                         if (!box) return;
-                        const entry = data[key][cat.key];
+                        const entry = (data[key] || {})[cat.key];
+                        if (!entry) return;
                         renderMiniFiles(box, entry);
                     });
                 });
@@ -1644,6 +2154,10 @@
                     const movedCount = (data.results || [])
                         .filter((r) => r.status === 'ok' || r.status === 'partial')
                         .reduce((sum, r) => sum + (r.moved || 0), 0);
+                    const notices = (data.results || []).filter((r) => r.notice).map((r) => r.notice);
+                    if (!wasFirstLoad && notices.length) {
+                        showToast('⚠ ' + notices.join(' '), false, 15000);
+                    }
                     const cardCollapsed = el.moveBody.classList.contains('collapsed');
                     if (!wasFirstLoad && movedCount > 0 && cardCollapsed) {
                         showToast(`Automatisch verschoben: ${movedCount} Datei(en). Details unter „Letztes automatisches Verschieben“.`, true, 10000);
@@ -1658,10 +2172,10 @@
             const labelOf = (key) => (CATEGORIES.find((c) => c.key === key) || {}).label || key;
             el.moveResults.innerHTML = results.map((r) => {
                 let text;
-                if (r.status === 'ok') text = `${r.moved} verschoben.`;
+                if (r.status === 'ok') text = `${r.moved} verschoben.` + (r.notice ? ` ⚠ ${r.notice}` : '');
                 else if (r.status === 'empty') text = 'Keine Ordner/Dateien gefunden.';
                 else if (r.status === 'skipped') text = r.reason;
-                else if (r.status === 'partial') text = `${r.moved} verschoben, ${r.reason}`;
+                else if (r.status === 'partial') text = `${r.moved} verschoben, ${r.reason}` + (r.notice ? ` ⚠ ${r.notice}` : '');
                 else text = r.reason;
 
                 return `
@@ -1704,29 +2218,99 @@
             return d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
 
+        // Kleines Cover-Thumbnail (TMDB), sofern für den Titel eins gefunden
+        // wurde – bewusst klein gehalten (Thumbnail-Format), kein großes Poster.
+        function posterImg(url, cssClass) {
+            return url ? `<img class="${cssClass}" src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+        }
+
+        // Stop-Button für einen einzelnen Eintrag – nur vorhanden, wenn
+        // NZBGet der Datei bereits eine NZBID zugewiesen hat (sonst gibt es
+        // dort noch nichts abzubrechen, z.B. "wird verarbeitet…" ganz am Anfang).
+        function stopBtn(id) {
+            if (!id) return '';
+            return `<button type="button" class="stop-btn" data-cancel-id="${escapeHtml(String(id))}" title="Diesen Download abbrechen">✕ Stop</button>`;
+        }
+
+        async function cancelDownload(id, btn) {
+            if (!confirm('Diesen Download wirklich abbrechen?')) return;
+            if (btn) btn.disabled = true;
+            try {
+                await api('/api/nzbget-cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id }),
+                });
+                showToast('Download abgebrochen.', true);
+                loadNzbgetQueue();
+            } catch (err) {
+                showToast(err.message, false);
+                if (btn) btn.disabled = false;
+            }
+        }
+
         // ---- NZBGet-Status: immer sichtbar – aktiver Download (mit
         // Fortschritt) + restliche Warteschlange, unabhängig davon, ob die
         // Datei über dieses Tool gebeamt oder direkt in NZBGet gestartet
         // wurde. ----
+        // Merkt sich die zuletzt aktive Download-ID, um einen Abschluss
+        // zu erkennen (aktiver Download verschwindet/wechselt) und dann
+        // sofort den "Zuletzt heruntergeladen"-Streifen zu aktualisieren,
+        // statt auf das nächste 30-Sekunden-Intervall zu warten.
+        let lastActiveDownloadId = null;
         async function loadNzbgetQueue() {
             try {
                 const data = await api('/api/nzbget-queue');
 
+                const currentActiveId = data.reachable && data.active ? data.active.id : null;
+                if (lastActiveDownloadId && currentActiveId !== lastActiveDownloadId) {
+                    // Ein zuvor aktiver Download ist fertig (oder wurde
+                    // abgebrochen) – neues Cover ggf. sofort nachladen.
+                    if (window.loadRecentCovers) window.loadRecentCovers();
+                }
+                lastActiveDownloadId = currentActiveId;
+
                 if (!data.reachable) {
                     el.nzbgetActiveBox.innerHTML = '<div class="empty-note">NZBGet nicht erreichbar.</div>';
                     el.nzbgetQueueList.innerHTML = '';
+                    el.headerCard.classList.remove('downloading');
                     return;
                 }
 
                 if (data.active) {
+                    // Echter Download läuft – die normale Fortschrittsanzeige
+                    // übernimmt (löst eine evtl. "wird verarbeitet…"-Anzeige ab).
                     const a = data.active;
                     el.nzbgetActiveBox.innerHTML = `
                         <div class="queue-active">
-                            <div class="queue-active-name">${escapeHtml(a.name)}</div>
-                            <div class="nzb-progress-bar"><div class="nzb-progress-fill" style="width:${a.percent}%;"></div></div>
-                            <div class="nzb-progress-label">${a.percent}% · ${a.downloadedMB} / ${a.totalMB} MB</div>
+                            <div class="queue-active-row">
+                                ${posterImg(a.posterUrl, 'poster-thumb')}
+                                <div class="queue-active-body">
+                                    <div class="queue-active-name">${escapeHtml(a.name)}</div>
+                                    <div class="nzb-progress-bar"><div class="nzb-progress-fill" style="width:${a.percent}%;"></div></div>
+                                    <div class="nzb-progress-label">${a.percent}% · ${a.downloadedMB} / ${a.totalMB} MB</div>
+                                </div>
+                                ${stopBtn(a.id)}
+                            </div>
                         </div>
                     `;
+                } else if (data.processing && data.processing.length) {
+                    // Über dieses Tool gebeamte Datei(en), die NZBGet noch
+                    // nicht aktiv herunterlädt (z.B. wird gerade erst
+                    // eingelesen) – Platzhalter, bis der echte Download
+                    // beginnt und der obige Zweig übernimmt.
+                    el.nzbgetActiveBox.innerHTML = data.processing.map((p) => `
+                        <div class="queue-active queue-processing">
+                            <div class="queue-active-row">
+                                ${posterImg(p.posterUrl, 'poster-thumb')}
+                                <div class="queue-active-body">
+                                    <div class="queue-active-name">${escapeHtml(p.name)}</div>
+                                    <div class="queue-processing-label">⏳ wird verarbeitet…</div>
+                                </div>
+                                ${stopBtn(p.id)}
+                            </div>
+                        </div>
+                    `).join('');
                 } else {
                     el.nzbgetActiveBox.innerHTML = '';
                 }
@@ -1734,8 +2318,9 @@
                 if (data.items && data.items.length) {
                     el.nzbgetQueueList.innerHTML = data.items.map((it) => `
                         <div class="queue-row">
-                            <span class="queue-name">${escapeHtml(it.name)}</span>
+                            <span class="queue-name-wrap">${posterImg(it.posterUrl, 'poster-thumb-sm')}<span class="queue-name">${escapeHtml(it.name)}</span></span>
                             <span class="queue-size">${it.sizeMB} MB</span>
+                            ${stopBtn(it.id)}
                         </div>
                     `).join('');
                 } else if (!data.active) {
@@ -1743,11 +2328,83 @@
                 } else {
                     el.nzbgetQueueList.innerHTML = '';
                 }
+
+                el.headerCard.classList.toggle('downloading', !!data.active);
             } catch (err) {
                 el.nzbgetActiveBox.innerHTML = '<div class="empty-note">Status konnte nicht geladen werden.</div>';
                 el.nzbgetQueueList.innerHTML = '';
+                el.headerCard.classList.remove('downloading');
             }
         }
+
+        // "Zuletzt heruntergeladen": Filmstreifen der Cover der letzten Beams
+        // (aus dem Aktions-Protokoll), neueste links. Läuft unabhängig vom
+        // Protokoll-Tab im Einstellungen-Modal, damit man die Cover sieht,
+        // ohne die Einstellungen öffnen zu müssen.
+        const RECENT_COVERS_COUNT = 12;
+        async function loadRecentCovers() {
+            try {
+                // Der Server holt das Cover bei Bedarf live nach (auch für
+                // ältere Protokoll-Einträge von vor dieser Funktion, die noch
+                // kein gespeichertes posterUrl haben) – daher reicht hier ein
+                // einfacher Aufruf, ohne selbst durch das Protokoll zu suchen.
+                const data = await api('/api/recent-covers?count=' + RECENT_COVERS_COUNT);
+                const withCover = data.covers || [];
+                if (!withCover.length) {
+                    el.recentCoversCard.style.display = 'none';
+                    return;
+                }
+                el.coverStrip.innerHTML = withCover.map((e) => `
+                    <div class="cover-strip-item" title="${escapeHtml(e.fileName || '')}">
+                        <img class="poster-thumb-lg" src="${escapeHtml(e.posterUrl)}" alt="" loading="lazy" onerror="this.closest('.cover-strip-item').remove()">
+                        <span class="cover-strip-name">${escapeHtml((e.fileName || '').replace(/\.nzb$/i, ''))}</span>
+                    </div>
+                `).join('');
+                el.recentCoversCard.style.display = 'block';
+            } catch (err) {
+                // Stiller Fehlschlag – der Filmstreifen ist ein Extra, kein
+                // kritischer Status, daher keine Fehlermeldung im UI.
+            }
+        }
+
+        // Manuelles Aktualisieren per Klick, zusätzlich zum automatischen
+        // Nachladen nach Upload/Downloadende und dem 30s-Intervall.
+        el.coverStripRefreshBtn.addEventListener('click', async () => {
+            el.coverStripRefreshBtn.disabled = true;
+            const originalLabel = el.coverStripRefreshBtn.innerHTML;
+            el.coverStripRefreshBtn.innerHTML = '↻ Aktualisiere…';
+            try {
+                await loadRecentCovers();
+            } finally {
+                el.coverStripRefreshBtn.innerHTML = originalLabel;
+                el.coverStripRefreshBtn.disabled = false;
+            }
+        });
+
+        // Ein Klick auf einen Stop-Button in der aktiven Box oder der
+        // Warteschlangenliste bricht genau diesen Download ab (Event-
+        // Delegation, da die Buttons bei jedem Poll neu gerendert werden).
+        [el.nzbgetActiveBox, el.nzbgetQueueList].forEach((container) => {
+            container.addEventListener('click', (e) => {
+                const btn = e.target.closest('.stop-btn');
+                if (!btn) return;
+                cancelDownload(btn.dataset.cancelId, btn);
+            });
+        });
+
+        el.nzbgetCancelAllBtn.addEventListener('click', async () => {
+            if (!confirm('Wirklich ALLE Downloads abbrechen – inklusive der kompletten Warteschlange?')) return;
+            el.nzbgetCancelAllBtn.disabled = true;
+            try {
+                const data = await api('/api/nzbget-cancel-all', { method: 'POST' });
+                showToast(`Alle Downloads abgebrochen (${data.count}).`, true);
+                loadNzbgetQueue();
+            } catch (err) {
+                showToast(err.message, false);
+            } finally {
+                el.nzbgetCancelAllBtn.disabled = false;
+            }
+        });
 
         // ---- Manuelles Verschieben ----
         el.moveNowBtn.addEventListener('click', async () => {
@@ -1869,7 +2526,6 @@
 
                 const cpuCls = levelClass(hw.cpu.loadPercent);
                 const memCls = levelClass(hw.memory.usedPercent);
-                const tempCls = hw.temperature.cpuC !== null ? levelClass(hw.temperature.cpuC >= 90 ? 100 : hw.temperature.cpuC >= 75 ? 65 : 0) : '';
 
                 const diskRows = hw.disks.map((d) => {
                     const cls = levelClass(d.usedPercent);
@@ -1887,9 +2543,12 @@
                     <div class="term-line"><span class="term-label">CPU</span><span class="term-value ${cpuCls}">${hw.cpu.loadPercent}%</span><span class="term-extra">${escapeHtml(hw.cpu.model)} · ${hw.cpu.cores} Kerne</span></div>
                     <div class="term-line"><span class="term-label">RAM</span><span class="term-value ${memCls}">${hw.memory.usedPercent}%</span><span class="term-extra">(${hw.memory.usedGb} GB / ${hw.memory.totalGb} GB)</span></div>
                     <div class="term-line"><span class="term-label">Netzwerk</span><span class="term-value">↓ ${hw.network.rxKBs} kB/s</span><span class="term-extra">↑ ${hw.network.txKBs} kB/s</span></div>
-                    <div class="term-line"><span class="term-label">Temperatur</span><span class="term-value ${tempCls}">${hw.temperature.cpuC !== null ? hw.temperature.cpuC + ' °C' : 'n/a'}</span></div>
                     <div class="term-line"><span class="term-label">Uptime</span><span class="term-value">${formatUptime(hw.uptimeSeconds)}</span></div>
-                    <div class="term-section">Laufwerke:</div>
+                `;
+                // Laufwerke stehen jetzt in einer eigenen Spalte neben den
+                // übrigen Hardware-Angaben statt darunter.
+                el.hwDisksCol.innerHTML = `
+                    <div class="term-section" style="margin-top:0;">Laufwerke:</div>
                     ${diskRows || '<div class="term-empty" style="padding-left:10px;">keine gefunden</div>'}
                 `;
             } catch (err) {
@@ -1897,6 +2556,7 @@
                     <div class="term-line"><span class="term-prompt">$</span>&nbsp;<span class="term-path">hardware-status</span></div>
                     <div class="term-empty">Fehler: ${escapeHtml(err.message)}</div>
                 `;
+                el.hwDisksCol.innerHTML = '';
             }
         }
 
@@ -1909,7 +2569,7 @@
                 el.modalTitle.textContent = 'Beam-Ablageordner auswählen';
             } else {
                 const cat = CATEGORIES.find((c) => c.key === category);
-                el.modalTitle.textContent = `${section === 'source' ? 'Quelle' : 'Ziel'} für ${cat.label} auswählen`;
+                el.modalTitle.textContent = `${section === 'source' ? 'Quelle' : (section === 'target2' ? 'Zweites Ziel' : 'Ziel')} für ${cat.label} auswählen`;
             }
 
             el.modalBackdrop.classList.add('open');
@@ -1920,7 +2580,7 @@
 
                 const currentDir = section === 'upload'
                     ? state.config.uploadDir
-                    : state.config[section === 'source' ? 'sources' : 'targets'][category];
+                    : (state.config[cfgKeyOf(section)] || {})[category];
                 let startPath = currentDir;
                 if (!startPath && drives.length) startPath = drives[0];
 
@@ -2006,22 +2666,64 @@
         });
 
         // ---- Auf-/Zuklappen der Verzeichnis-Boxen ----
-        function setupCollapsible(headEl, bodyEl) {
+        // startCollapsed: Standardzustand beim Laden der Seite (kein Merken
+        // über Reloads hinweg) – innerhalb der Sitzung aber aufklappbar.
+        // Gibt die apply()-Funktion zurück, damit der Zustand auch von
+        // außen (z.B. externen Buttons) gesetzt werden kann.
+        function setupCollapsible(headEl, bodyEl, startCollapsed) {
             function apply(collapsed) {
                 headEl.classList.toggle('collapsed', collapsed);
                 bodyEl.classList.toggle('collapsed', collapsed);
             }
-            // Standard: immer geschlossen beim Laden der Seite (kein Merken
-            // über Reloads hinweg) – innerhalb der Sitzung aber aufklappbar.
-            apply(true);
+            apply(startCollapsed !== false);
 
             headEl.addEventListener('click', () => {
                 apply(!bodyEl.classList.contains('collapsed'));
             });
+
+            return apply;
         }
 
+        // ---- Dark / Light Mode: Auto (Systemvorgabe) -> Hell -> Dunkel -> Auto ----
+        const THEME_KEY = 'nzbBeamerTheme';
+        const THEME_ICONS = { auto: '🌓', light: '☀️', dark: '🌙' };
+        const THEME_LABELS = { auto: 'Automatisch (Systemvorgabe)', light: 'Hell', dark: 'Dunkel' };
+
+        function getStoredTheme() {
+            try {
+                const v = localStorage.getItem(THEME_KEY);
+                return (v === 'light' || v === 'dark') ? v : 'auto';
+            } catch (err) { return 'auto'; }
+        }
+
+        function applyTheme(mode) {
+            if (mode === 'light' || mode === 'dark') {
+                document.documentElement.setAttribute('data-theme', mode);
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                mode = 'auto';
+            }
+            el.themeToggleBtn.textContent = THEME_ICONS[mode];
+            el.themeToggleBtn.title = 'Design: ' + THEME_LABELS[mode];
+            try {
+                if (mode === 'auto') localStorage.removeItem(THEME_KEY);
+                else localStorage.setItem(THEME_KEY, mode);
+            } catch (err) { /* ignore */ }
+        }
+
+        applyTheme(getStoredTheme());
+
+        el.themeToggleBtn.addEventListener('click', () => {
+            const current = getStoredTheme();
+            const next = current === 'auto' ? 'light' : (current === 'light' ? 'dark' : 'auto');
+            applyTheme(next);
+        });
+
         // ---- Settings-Modal (File Management) ----
-        function openSettingsModal() { el.settingsModalBackdrop.classList.add('open'); }
+        function openSettingsModal() {
+            el.settingsModalBackdrop.classList.add('open');
+            if (window.loadLog) window.loadLog();
+        }
         function closeSettingsModal() { el.settingsModalBackdrop.classList.remove('open'); }
         el.settingsBtn.addEventListener('click', openSettingsModal);
         el.settingsModalCloseBtn.addEventListener('click', closeSettingsModal);
@@ -2029,8 +2731,9 @@
         el.settingsModalBackdrop.addEventListener('click', (e) => {
             if (e.target === el.settingsModalBackdrop) closeSettingsModal();
         });
-        setupCollapsible(el.hwToggle, el.hwBody);
-        setupCollapsible(el.networkToggle, el.networkBody);
+        // DOS-Prompt/Server-Info-Fenster ist standardmäßig aufgeklappt
+        // (weiterhin per Klick auf die Kartenüberschrift ein-/ausklappbar).
+        setupCollapsible(el.hwToggle, el.hwBody, false);
         setupCollapsible(el.moveToggle, el.moveBody);
 
         // ---- Server verwalten ----
@@ -2059,28 +2762,65 @@
         setInterval(loadStatus, 10000);
         setInterval(loadHardware, 5000);
         setInterval(loadMoveStatus, 15000);
+        // Global erreichbar machen, damit der Upload-Handler (andere IIFE
+        // weiter oben) nach dem Beamen sofort neu laden kann, statt auf das
+        // nächste Intervall zu warten.
+        window.loadNzbgetQueue = loadNzbgetQueue;
         setInterval(loadNzbgetQueue, 6000);
+        // Der Cover-Filmstreifen ändert sich nur, wenn tatsächlich etwas neu
+        // gebeamt wurde – ein langsameres Intervall reicht, plus der direkte
+        // Aufruf unten nach jedem erfolgreichen Beam.
+        window.loadRecentCovers = loadRecentCovers;
+        setInterval(loadRecentCovers, 30000);
+
+        // Automatisches Durchscrollen des Cover-Streifens, falls mehr Cover
+        // da sind als auf einmal passen (die sichtbaren 8) – pausiert,
+        // solange die Maus darüber ist, damit man in Ruhe hinschauen oder
+        // selbst scrollen kann.
+        let coverStripAutoScrollPaused = false;
+        el.coverStrip.addEventListener('mouseenter', () => { coverStripAutoScrollPaused = true; });
+        el.coverStrip.addEventListener('mouseleave', () => { coverStripAutoScrollPaused = false; });
+        setInterval(() => {
+            const strip = el.coverStrip;
+            if (coverStripAutoScrollPaused || !strip.children.length) return;
+            const maxScroll = strip.scrollWidth - strip.clientWidth;
+            if (maxScroll <= 2) return;
+            const firstItem = strip.querySelector('.cover-strip-item');
+            const step = firstItem ? firstItem.getBoundingClientRect().width + 10 : 100;
+            if (strip.scrollLeft >= maxScroll - 2) {
+                strip.scrollTo({ left: 0, behavior: 'smooth' });
+            } else {
+                strip.scrollBy({ left: step, behavior: 'smooth' });
+            }
+        }, 3500);
 
         loadConfig();
         loadNetworkRanges();
+        loadTmdbSettings();
         loadStatus();
         loadHardware();
         loadMoveStatus();
         loadNzbgetQueue();
+        loadRecentCovers();
     })();
 
     // -----------------------------------------------------------------
-    // Protokoll: standardmäßig geschlossen, lädt erst beim Aufklappen
+    // Protokoll: liegt im Einstellungen-Modal, lädt erst wenn dieses
+    // geöffnet wird (nicht beim Seitenaufruf).
     // -----------------------------------------------------------------
     (function () {
-        const logToggle = document.getElementById('logToggle');
-        const logBody = document.getElementById('logBody');
         const logList = document.getElementById('logList');
 
         function escapeHtml(str) {
             const d = document.createElement('div');
             d.textContent = str;
             return d.innerHTML;
+        }
+
+        // Eigene Kopie von posterImg (die Version aus der anderen IIFE weiter
+        // oben ist außerhalb ihres Closures nicht sichtbar).
+        function posterImg(url, cssClass) {
+            return url ? `<img class="${cssClass}" src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
         }
 
         function formatLogTime(iso) {
@@ -2096,11 +2836,16 @@
             }
             logList.innerHTML = entries.map((e) => `
                 <div class="log-entry">
-                    <div class="log-entry-head">
-                        <span class="log-entry-name">${escapeHtml(e.fileName || '–')}</span>
-                        <span class="log-entry-time">${formatLogTime(e.timestamp)}</span>
+                    <div class="log-entry-row">
+                        ${posterImg(e.posterUrl, 'poster-thumb')}
+                        <div class="log-entry-body">
+                            <div class="log-entry-head">
+                                <span class="log-entry-name">${escapeHtml(e.fileName || '–')}</span>
+                                <span class="log-entry-time">${formatLogTime(e.timestamp)}</span>
+                            </div>
+                            <div class="log-entry-meta">${escapeHtml(e.ip || '–')}${e.totalSizeGb != null ? ' · ' + e.totalSizeGb + ' GB' : ''}${e.fileCount != null ? ' · ' + e.fileCount + ' Dateien' : ''}${e.groups && e.groups.length ? ' · ' + escapeHtml(e.groups.join(', ')) : ''}</div>
+                        </div>
                     </div>
-                    <div class="log-entry-meta">${escapeHtml(e.ip || '–')}${e.totalSizeGb != null ? ' · ' + e.totalSizeGb + ' GB' : ''}${e.fileCount != null ? ' · ' + e.fileCount + ' Dateien' : ''}${e.groups && e.groups.length ? ' · ' + escapeHtml(e.groups.join(', ')) : ''}</div>
                 </div>
             `).join('');
         }
@@ -2116,12 +2861,7 @@
             }
         }
 
-        logToggle.addEventListener('click', () => {
-            const nowCollapsed = !logBody.classList.contains('collapsed');
-            logToggle.classList.toggle('collapsed', nowCollapsed);
-            logBody.classList.toggle('collapsed', nowCollapsed);
-            if (!nowCollapsed) loadLog();
-        });
+        window.loadLog = loadLog;
     })();
 </script>
 
