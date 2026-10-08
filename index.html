@@ -962,30 +962,48 @@
             transition: transform .15s ease;
         }
 
-        /* "Zuletzt heruntergeladen": Reihe der letzten Cover, neueste links.
-           Zeigt bis zu RECENT_COVERS_COUNT (aktuell 12) Cover; die ersten 8
-           teilen sich die Kartenbreite gleichmäßig auf (ein Platz ist genau
-           1/8 der Breite), ab dem 9. Cover wird horizontal gescrollt statt
-           weiter zu stauchen. */
+        /* "Zuletzt heruntergeladen": endloses Karussell der letzten Cover.
+           Immer genau 7 Plätze sichtbar (je 1/7 der Breite), das mittlere
+           Cover (Platz 4) ist um 25 % vergrößert und im Fokus, die übrigen
+           sind abgedunkelt. Der Track enthält links und rechts je 3 weitere
+           Cover als Puffer, damit beim Weiterschieben nie eine Lücke
+           entsteht. Das vertikale Padding lässt Platz für die Vergrößerung
+           (Prozentwerte beziehen sich hier auf die Breite). */
         .cover-strip {
+            overflow: hidden;
+            padding: calc((100% - 6 * 10px) / 7 * 0.19 + 6px) 0;
+            touch-action: pan-y;
+            user-select: none;
+        }
+        .cover-strip-track {
             display: flex;
             gap: 10px;
-            overflow-x: auto;
-            padding: 2px 2px 8px;
-            scroll-behavior: smooth;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
+            transition: transform .45s ease;
+            will-change: transform;
         }
-        .cover-strip::-webkit-scrollbar { display: none; }
         .cover-strip-item {
-            flex: 0 0 calc((100% - 7 * 10px) / 8);
-            min-width: 50px;
+            flex: 0 0 calc((100% - 6 * 10px) / 7);
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 4px;
+            opacity: 0.55;
+            cursor: pointer;
+            position: relative;
+            transition: transform .45s ease, opacity .45s ease;
         }
-        .cover-strip-item:hover .poster-thumb-lg { transform: scale(1.04); }
+        .cover-strip-item.is-center {
+            transform: scale(1.25);
+            opacity: 1;
+            z-index: 2;
+            cursor: default;
+        }
+        .cover-strip-item.is-center .poster-thumb-lg { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px var(--shadow); }
+        .cover-strip-item.is-center .cover-strip-name { color: var(--text-secondary); }
+        .cover-strip-item.is-empty { visibility: hidden; }
+        .cover-strip-track.no-anim,
+        .cover-strip-track.no-anim .cover-strip-item { transition: none; }
+        .cover-strip-item:not(.is-center):hover { opacity: 0.85; }
         .cover-strip-name {
             font-size: 10px;
             color: var(--text-faint);
@@ -1343,7 +1361,7 @@
          neueste links – nur sichtbar, sobald mindestens ein Cover da ist. -->
     <div class="card" id="recentCoversCard" style="display:none">
         <div class="section-title">Zuletzt heruntergeladen</div>
-        <div class="cover-strip" id="coverStrip"></div>
+        <div class="cover-strip" id="coverStrip"><div class="cover-strip-track" id="coverStripTrack"></div></div>
         <div class="cover-strip-refresh-row">
             <button type="button" class="cover-strip-refresh-btn" id="coverStripRefreshBtn">↻ Aktualisieren</button>
         </div>
@@ -1783,6 +1801,7 @@
             nzbgetCancelAllBtn: document.getElementById('nzbgetCancelAllBtn'),
             recentCoversCard: document.getElementById('recentCoversCard'),
             coverStrip: document.getElementById('coverStrip'),
+            coverStripTrack: document.getElementById('coverStripTrack'),
             coverStripRefreshBtn: document.getElementById('coverStripRefreshBtn'),
             headerCard: document.getElementById('headerCard'),
             newCategoryLabel: document.getElementById('newCategoryLabel'),
@@ -2342,6 +2361,104 @@
         // Protokoll-Tab im Einstellungen-Modal, damit man die Cover sieht,
         // ohne die Einstellungen öffnen zu müssen.
         const RECENT_COVERS_COUNT = 12;
+        // Karussell: 7 sichtbare Plätze, Platz 4 (Index 3) ist die Mitte.
+        // COVER_BUFFER Cover links und rechts außerhalb des Sichtbereichs
+        // sorgen dafür, dass beim Schieben (bis zu 3 Plätze auf einmal)
+        // immer Nachschub da ist – die Liste wird per Modulo endlos
+        // wiederholt.
+        const COVER_VISIBLE = 7;
+        const COVER_CENTER = 3;
+        const COVER_BUFFER = 3;
+        const COVER_GAP = 10;
+        const COVER_ANIM_MS = 450;
+        let covers = [];
+        let coversKey = '';
+        let coverOffset = 0;          // Index des Covers in der Mitte
+        let coverAnimating = false;
+        let pendingCovers = null;     // während einer Animation eingetroffen
+
+        function coverTrackTransform(shift) {
+            const pitch = `((100% - ${(COVER_VISIBLE - 1) * COVER_GAP}px) / ${COVER_VISIBLE} + ${COVER_GAP}px)`;
+            return `translateX(calc(${-(COVER_BUFFER + shift)} * ${pitch}))`;
+        }
+
+        function renderCoverStrip() {
+            const track = el.coverStripTrack;
+            const n = covers.length;
+            const reach = COVER_CENTER + COVER_BUFFER;
+            let html = '';
+            for (let rel = -reach; rel <= reach; rel++) {
+                // Bei nur einem Cover keine Wiederholungen, sonst stünde
+                // siebenmal dasselbe Bild nebeneinander.
+                if (n === 1 && rel !== 0) {
+                    html += '<div class="cover-strip-item is-empty"></div>';
+                    continue;
+                }
+                const e = covers[(((coverOffset + rel) % n) + n) % n];
+                html += `
+                    <div class="cover-strip-item${rel === 0 ? ' is-center' : ''}" data-rel="${rel}" data-url="${escapeHtml(e.posterUrl)}" title="${escapeHtml(e.fileName || '')}">
+                        <img class="poster-thumb-lg" src="${escapeHtml(e.posterUrl)}" alt="" draggable="false">
+                        <span class="cover-strip-name">${escapeHtml((e.fileName || '').replace(/\.nzb$/i, ''))}</span>
+                    </div>`;
+            }
+            // Ohne Animation zurück auf die Grundposition springen – optisch
+            // identisch mit dem Endzustand der vorherigen Animation.
+            track.classList.add('no-anim');
+            track.innerHTML = html;
+            track.style.transform = coverTrackTransform(0);
+            void track.offsetWidth;
+            track.classList.remove('no-anim');
+        }
+
+        function applyCovers(list) {
+            covers = list;
+            coverOffset = 0;   // neuestes Cover in die Mitte
+            if (!covers.length) {
+                el.recentCoversCard.style.display = 'none';
+                return;
+            }
+            el.recentCoversCard.style.display = 'block';
+            renderCoverStrip();
+        }
+
+        // Um `shift` Plätze weiterschieben (positiv = nach rechts zu älteren
+        // Covern). Nach der Animation wird der Offset übernommen und neu
+        // gerendert, damit der Puffer wieder auf beiden Seiten voll ist.
+        function stepCovers(shift) {
+            shift = Math.max(-COVER_BUFFER, Math.min(COVER_BUFFER, shift));
+            if (coverAnimating || covers.length < 2 || !shift) return;
+            coverAnimating = true;
+            const track = el.coverStripTrack;
+            track.querySelectorAll('.cover-strip-item').forEach((item) => {
+                item.classList.toggle('is-center', Number(item.dataset.rel) === shift);
+            });
+            track.style.transform = coverTrackTransform(shift);
+            setTimeout(() => {
+                coverOffset = (coverOffset + shift) % covers.length;
+                coverAnimating = false;
+                if (pendingCovers) {
+                    const next = pendingCovers;
+                    pendingCovers = null;
+                    applyCovers(next);
+                } else {
+                    renderCoverStrip();
+                }
+            }, COVER_ANIM_MS);
+        }
+
+        // Cover, deren Bild nicht lädt, fliegen aus dem Karussell (vorher
+        // wurde das einzelne Element entfernt, das würde hier aber die
+        // Platzaufteilung zerschießen).
+        el.coverStripTrack.addEventListener('error', (ev) => {
+            const item = ev.target.closest && ev.target.closest('.cover-strip-item');
+            if (!item) return;
+            const url = item.dataset.url;
+            const remaining = covers.filter((c) => c.posterUrl !== url);
+            if (remaining.length === covers.length) return;
+            if (coverAnimating) { pendingCovers = remaining; return; }
+            applyCovers(remaining);
+        }, true);
+
         async function loadRecentCovers() {
             try {
                 // Der Server holt das Cover bei Bedarf live nach (auch für
@@ -2349,18 +2466,14 @@
                 // kein gespeichertes posterUrl haben) – daher reicht hier ein
                 // einfacher Aufruf, ohne selbst durch das Protokoll zu suchen.
                 const data = await api('/api/recent-covers?count=' + RECENT_COVERS_COUNT);
-                const withCover = data.covers || [];
-                if (!withCover.length) {
-                    el.recentCoversCard.style.display = 'none';
-                    return;
-                }
-                el.coverStrip.innerHTML = withCover.map((e) => `
-                    <div class="cover-strip-item" title="${escapeHtml(e.fileName || '')}">
-                        <img class="poster-thumb-lg" src="${escapeHtml(e.posterUrl)}" alt="" loading="lazy" onerror="this.closest('.cover-strip-item').remove()">
-                        <span class="cover-strip-name">${escapeHtml((e.fileName || '').replace(/\.nzb$/i, ''))}</span>
-                    </div>
-                `).join('');
-                el.recentCoversCard.style.display = 'block';
+                const withCover = (data.covers || []).filter((e) => e.posterUrl);
+                // Unveränderte Daten nicht neu rendern, sonst springt das
+                // Karussell bei jedem 30s-Poll zurück auf das neueste Cover.
+                const key = JSON.stringify(withCover.map((e) => [e.posterUrl, e.fileName]));
+                if (key === coversKey) return;
+                coversKey = key;
+                if (coverAnimating) { pendingCovers = withCover; return; }
+                applyCovers(withCover);
             } catch (err) {
                 // Stiller Fehlschlag – der Filmstreifen ist ein Extra, kein
                 // kritischer Status, daher keine Fehlermeldung im UI.
@@ -2773,26 +2886,43 @@
         window.loadRecentCovers = loadRecentCovers;
         setInterval(loadRecentCovers, 30000);
 
-        // Automatisches Durchscrollen des Cover-Streifens, falls mehr Cover
-        // da sind als auf einmal passen (die sichtbaren 8) – pausiert,
-        // solange die Maus darüber ist, damit man in Ruhe hinschauen oder
-        // selbst scrollen kann.
+        // Endloses automatisches Weiterschieben des Cover-Karussells um
+        // jeweils einen Platz – pausiert, solange die Maus darüber ist oder
+        // der Tab im Hintergrund liegt.
         let coverStripAutoScrollPaused = false;
         el.coverStrip.addEventListener('mouseenter', () => { coverStripAutoScrollPaused = true; });
         el.coverStrip.addEventListener('mouseleave', () => { coverStripAutoScrollPaused = false; });
         setInterval(() => {
-            const strip = el.coverStrip;
-            if (coverStripAutoScrollPaused || !strip.children.length) return;
-            const maxScroll = strip.scrollWidth - strip.clientWidth;
-            if (maxScroll <= 2) return;
-            const firstItem = strip.querySelector('.cover-strip-item');
-            const step = firstItem ? firstItem.getBoundingClientRect().width + 10 : 100;
-            if (strip.scrollLeft >= maxScroll - 2) {
-                strip.scrollTo({ left: 0, behavior: 'smooth' });
-            } else {
-                strip.scrollBy({ left: step, behavior: 'smooth' });
-            }
+            if (coverStripAutoScrollPaused || document.hidden) return;
+            stepCovers(1);
         }, 3500);
+
+        // Manuelle Steuerung: Klick auf ein Cover holt es in die Mitte,
+        // horizontales Scrollen (Trackpad / Shift+Mausrad) und Wischen
+        // schieben um einen Platz.
+        let coverSwipeStartX = null;
+        let coverSwipeHandled = false;
+        el.coverStripTrack.addEventListener('click', (ev) => {
+            if (coverSwipeHandled) { coverSwipeHandled = false; return; }
+            const item = ev.target.closest('.cover-strip-item');
+            if (item && item.dataset.rel) stepCovers(Number(item.dataset.rel));
+        });
+        el.coverStrip.addEventListener('wheel', (ev) => {
+            const delta = ev.deltaX || (ev.shiftKey ? ev.deltaY : 0);
+            if (Math.abs(delta) < 4) return;
+            ev.preventDefault();
+            stepCovers(delta > 0 ? 1 : -1);
+        }, { passive: false });
+        el.coverStrip.addEventListener('pointerdown', (ev) => { coverSwipeStartX = ev.clientX; coverSwipeHandled = false; });
+        el.coverStrip.addEventListener('pointerup', (ev) => {
+            if (coverSwipeStartX === null) return;
+            const dx = ev.clientX - coverSwipeStartX;
+            coverSwipeStartX = null;
+            if (Math.abs(dx) < 30) return;
+            coverSwipeHandled = true;
+            stepCovers(dx < 0 ? 1 : -1);
+        });
+        el.coverStrip.addEventListener('pointercancel', () => { coverSwipeStartX = null; });
 
         loadConfig();
         loadNetworkRanges();
